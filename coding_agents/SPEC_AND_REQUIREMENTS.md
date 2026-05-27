@@ -226,6 +226,7 @@ accounting:
 ## Technology Stack
 
 - **Language**: Python 3.10+
+- **Virtual Environment**: `venv` (named "venv" in project root)
 - **Web Framework**: Flask
 - **ORM**: SQLAlchemy with Flask-SQLAlchemy
 - **Database**: PostgreSQL
@@ -273,6 +274,7 @@ py_pg_accounts/
 │   └── py_pg_accounts.service
 ├── schema/                 # PostgreSQL schema files (tracked)
 │   └── init.sql
+├── venv/                   # Python virtual environment (untracked)
 ├── install.sh              # Installation script (tracked)
 ├── uploads/                # File uploads (untracked)
 │   ├── expenses/
@@ -284,21 +286,24 @@ py_pg_accounts/
 
 ## Systemd Service
 
-The application can run as a systemd user service.
+The application runs as a systemd user service using the project `venv`.
 
 ### Service File: `systemd/py_pg_accounts.service`
 ```
 [Unit]
 Description=Python PostgreSQL Accounting System
 After=postgresql.service
+Wants=postgresql.service
 
 [Service]
 Type=simple
-User=%u
-WorkingDirectory=/home/%u/path/to/py_pg_accounts
-ExecStart=/home/%u/.local/bin/python3 run.py --host 192.168.4.44
+Environment="PATH=%h/py_pg_accounts/venv/bin:/usr/local/bin:/usr/bin:/bin"
+WorkingDirectory=%h/py_pg_accounts
+ExecStart=%h/py_pg_accounts/venv/bin/python3 run.py --host 192.168.4.44
 Restart=on-failure
 RestartSec=5
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=default.target
