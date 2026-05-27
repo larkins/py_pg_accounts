@@ -78,14 +78,38 @@ def register():
 
         user = User(email=email, country='AU')
         user.set_password(password)
+        token = user.generate_verification_token()
 
         db.session.add(user)
         db.session.commit()
 
-        flash('Registration successful. Please log in.', 'success')
+        verification_url = url_for('hmi.verify_email', token=token, _external=True)
+        flash(f'Registration successful! Your verification token is: {token}', 'success')
+        flash(f'Please verify your email at: {verification_url}', 'info')
+
         return redirect(url_for('hmi.login'))
 
     return render_template('register.html')
+
+
+@hmi_bp.route('/verify/<token>')
+def verify_email(token):
+    user = User.query.filter_by(verification_token=token).first()
+
+    if not user:
+        flash('Invalid verification token.', 'error')
+        return redirect(url_for('hmi.login'))
+
+    if user.email_verified:
+        flash('Email already verified.', 'info')
+        return redirect(url_for('hmi.login'))
+
+    user.email_verified = True
+    user.verification_token = None
+    db.session.commit()
+
+    flash('Email verified successfully! You can now use the API.', 'success')
+    return redirect(url_for('hmi.login'))
 
 
 @hmi_bp.route('/')
@@ -1073,3 +1097,58 @@ def activity_logs():
     ).paginate(page=page, per_page=per_page, error_out=False)
 
     return render_template('activity_logs.html', logs=logs)
+
+
+@hmi_bp.route('/api-key')
+@login_required
+def api_key_management():
+    user = User.query.get(session['user_id'])
+    return render_template('api_key.html', user=user)
+
+
+@hmi_bp.route('/api-key/generate', methods=['POST'])
+@login_required
+def generate_api_key():
+    user = User.query.get(session['user_id'])
+
+    if not user.email_verified:
+        flash('Please verify your email first.', 'error')
+        return redirect(url_for('hmi.api_key_management'))
+
+    old_api_key = user.api_key
+    new_api_key = user.generate_api_key()
+    db.session.commit()
+
+    log = ActivityLog(
+        user_id=user.id,
+        action='UPDATE',
+        table_name='users',
+        record_id=user.id,
+        old_values={'api_key': old_api_key[:8] + '...' if old_api_key else None},
+        new_values={'api_key': new_api_key[:8] + '...'},
+        ip_address=request.remote_addr
+    )
+    db.session.add(log)
+    db.session.commit()
+
+    flash(f'New API key generated: {new_api_key}', 'success')
+    return redirect(url_for('hmi.api_key_management'))
+
+
+@hmi_bp.route('/resend-verification', methods=['POST'])
+@login_required
+def resend_verification():
+    user = User.query.get(session['user_id'])
+
+    if user.email_verified:
+        flash('Email already verified.', 'info')
+        return redirect(url_for('hmi.api_key_management'))
+
+    token = user.generate_verification_token()
+    db.session.commit()
+
+    verification_url = url_for('hmi.verify_email', token=token, _external=True)
+    flash(f'New verification token generated!', 'success')
+    flash(f'Verification URL: {verification_url}', 'info')
+
+    return redirect(url_for('hmi.api_key_management'))

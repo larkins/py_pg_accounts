@@ -16,6 +16,8 @@ class User(UserMixin, db.Model):
     password_hash = db.Column(db.String(255), nullable=False)
     country = db.Column(db.String(50), nullable=False, default='AU')
     api_key = db.Column(db.String(64), unique=True, nullable=True, index=True)
+    email_verified = db.Column(db.Boolean, nullable=False, default=False)
+    verification_token = db.Column(db.String(64), unique=True, nullable=True, index=True)
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=get_utc_now)
     updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=get_utc_now, onupdate=get_utc_now)
 
@@ -33,11 +35,16 @@ class User(UserMixin, db.Model):
         self.api_key = secrets.token_hex(32)
         return self.api_key
 
+    def generate_verification_token(self):
+        self.verification_token = secrets.token_hex(32)
+        return self.verification_token
+
     def to_dict(self):
         return {
             'id': self.id,
             'email': self.email,
             'country': self.country,
+            'email_verified': self.email_verified,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }

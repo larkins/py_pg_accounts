@@ -11,12 +11,15 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash VARCHAR(255) NOT NULL,
     country VARCHAR(50) NOT NULL DEFAULT 'AU',
     api_key VARCHAR(64) UNIQUE,
+    email_verified BOOLEAN NOT NULL DEFAULT FALSE,
+    verification_token VARCHAR(64),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_users_api_key ON users(api_key);
+CREATE INDEX IF NOT EXISTS idx_users_verification_token ON users(verification_token);
 
 -- Account Categories table
 CREATE TABLE IF NOT EXISTS account_categories (
@@ -119,7 +122,7 @@ CREATE TRIGGER update_invoices_updated_at
     EXECUTE FUNCTION update_updated_at_column();
 
 -- Comments for documentation
-COMMENT ON TABLE users IS 'User accounts with authentication and API access';
+COMMENT ON TABLE users IS 'User accounts with authentication and API access. email_verified required before API key usage.';
 COMMENT ON TABLE account_categories IS 'Chart of accounts categories for classification';
 COMMENT ON TABLE expenses IS 'Expense records with GST tracking';
 COMMENT ON TABLE invoices IS 'Invoice records with GST tracking';
