@@ -32,8 +32,8 @@
             <div class="form-group">
                 <label for="gst_type">GST Type</label>
                 <select id="gst_type" name="gst_type">
-                    <option value="0" {% if (gst_type or expense.gst_type|string if expense) == '0' %}selected{% endif %}>No GST (0%)</option>
                     <option value="0.1" {% if (gst_type or expense.gst_type|string if expense) == '0.1' %}selected{% endif %}>GST (10%)</option>
+                    <option value="0" {% if (gst_type or expense.gst_type|string if expense) == '0' %}selected{% endif %}>No GST (0%)</option>
                 </select>
             </div>
         </div>
