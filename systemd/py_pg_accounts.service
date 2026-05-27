@@ -1,7 +1,7 @@
 [Unit]
 Description=Python PostgreSQL Accounting System
-After=postgresql.service
-Wants=postgresql.service
+After=postgresql.service network-online.target
+Wants=postgresql.service network-online.target
 
 [Service]
 Type=simple
@@ -12,7 +12,8 @@ Environment="DB_NAME=py_pg_accounts"
 Environment="DB_USER=postgres"
 Environment="DB_PASSWORD=1234"
 WorkingDirectory=%h/py_pg_accounts
-ExecStart=%h/py_pg_accounts/venv/bin/python3 run.py --host 192.168.4.44
+ExecStartPre=/bin/sleep 5
+ExecStart=%h/py_pg_accounts/venv/bin/python3 run.py --host 0.0.0.0
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal
