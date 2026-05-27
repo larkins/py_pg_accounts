@@ -1,0 +1,86 @@
+{% extends "pwa/base.html" %}
+
+{% block title %}Capture Receipt{% endblock %}
+
+{% block content %}
+<div class="header">
+    <h1>Receipt Capture</h1>
+</div>
+<div class="user-info">
+    {{ session.get('pwa_user_email') }}
+    | <a href="{{ url_for('pwa.pwa_logout') }}">Logout</a>
+</div>
+<div class="nav">
+    <a href="{{ url_for('pwa.index') }}">Home</a>
+    <a href="{{ url_for('pwa.capture') }}">Capture</a>
+</div>
+
+<div class="container">
+    <div class="card">
+        <h2>Capture Receipt</h2>
+        <form method="POST" action="{{ url_for('pwa.upload') }}" enctype="multipart/form-data" id="receiptForm">
+            <div class="form-group">
+                <label for="vendor_name">Vendor Name *</label>
+                <input type="text" id="vendor_name" name="vendor_name" required>
+            </div>
+
+            <div class="form-group">
+                <label for="description">Description</label>
+                <input type="text" id="description" name="description">
+            </div>
+
+            <div class="form-group">
+                <label for="ex_gst_amount">Ex-GST Amount *</label>
+                <input type="number" id="ex_gst_amount" name="ex_gst_amount" step="0.01" min="0" required>
+            </div>
+
+            <div class="form-group">
+                <label for="gst_type">GST Type</label>
+                <select id="gst_type" name="gst_type">
+                    <option value="0">No GST (0%)</option>
+                    <option value="0.1" selected>GST (10%)</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="expense_date">Expense Date *</label>
+                <input type="date" id="expense_date" name="expense_date" required value="{{ today }}">
+            </div>
+
+            <div class="form-group">
+                <label>Receipt Photo *</label>
+                <input type="file" id="fileInput" accept="image/*" capture="environment" style="display: none;">
+                <button type="button" class="btn btn-primary" id="captureBtn" onclick="document.getElementById('fileInput').click()">
+                    Take Photo
+                </button>
+                <img id="preview" style="display: none; width: 100%; margin-top: 12px; border-radius: 8px;">
+            </div>
+
+            <input type="hidden" id="image_data" name="image_data">
+
+            <button type="submit" class="btn btn-primary" id="submitBtn" disabled>Upload Receipt</button>
+        </form>
+    </div>
+</div>
+
+<script>
+    const fileInput = document.getElementById('fileInput');
+    const preview = document.getElementById('preview');
+    const imageData = document.getElementById('image_data');
+    const submitBtn = document.getElementById('submitBtn');
+
+    fileInput.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                preview.src = event.target.result;
+                preview.style.display = 'block';
+                imageData.value = event.target.result;
+                submitBtn.disabled = false;
+            };
+            reader.readAsDataURL(file);
+        }
+    });
+</script>
+{% endblock %}

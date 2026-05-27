@@ -149,6 +149,7 @@ Open-source accounting software built with Python, Flask, and PostgreSQL. Design
 
 ### Reports
 - `GET /api/reports/profit-loss` - P&L report (params: start_date, end_date)
+- `GET /api/reports/monthly` - Monthly P&L report (params: year, month)
 - `GET /api/reports/quarterly-bas` - Quarterly BAS summary
 - `GET /api/reports/yearly-finances` - Yearly P&L for July-June
 
@@ -166,6 +167,7 @@ Open-source accounting software built with Python, Flask, and PostgreSQL. Design
 - `/invoices/new` - Create invoice
 - `/invoices/<id>/edit` - Edit invoice
 - `/reports` - Report generation interface
+- `/reports/monthly` - Monthly P&L report
 - `/reports/quarterly-bas` - Quarterly BAS report
 - `/reports/yearly-pnl` - Yearly P&L report
 - `/account-categories` - Manage account categories
@@ -267,6 +269,11 @@ py_pg_accounts/
 │       └── validators.py
 ├── skills/                 # Agent skills
 │   └── accounting_skill.py
+├── systemd/                # Systemd service files (tracked)
+│   └── py_pg_accounts.service
+├── schema/                 # PostgreSQL schema files (tracked)
+│   └── init.sql
+├── install.sh              # Installation script (tracked)
 ├── uploads/                # File uploads (untracked)
 │   ├── expenses/
 │   ├── invoices/
@@ -274,3 +281,42 @@ py_pg_accounts/
 ├── requirements.txt
 └── run.py                  # Application entry point
 ```
+
+## Systemd Service
+
+The application can run as a systemd user service.
+
+### Service File: `systemd/py_pg_accounts.service`
+```
+[Unit]
+Description=Python PostgreSQL Accounting System
+After=postgresql.service
+
+[Service]
+Type=simple
+User=%u
+WorkingDirectory=/home/%u/path/to/py_pg_accounts
+ExecStart=/home/%u/.local/bin/python3 run.py --host 192.168.4.44
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+```
+
+To install: `systemctl --user enable py_pg_accounts.service`
+To start: `systemctl --user start py_pg_accounts.service`
+To view logs: `journalctl --user -u py_pg_accounts.service`
+
+## PostgreSQL Schema
+
+Database schema is stored in `schema/init.sql` for manual setup or automation.
+
+## Installation
+
+Run `install.sh` to:
+1. Copy `.env.example` to `.env`
+2. Copy `config.yaml.example` to `config.yaml`
+3. Initialize the PostgreSQL schema
+4. Install the systemd user service
+5. Display reminder to modify configuration files

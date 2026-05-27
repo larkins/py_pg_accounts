@@ -1,0 +1,17 @@
+[Unit]
+Description=Python PostgreSQL Accounting System
+After=postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+Environment="PATH=/home/%u/.local/bin:/usr/local/bin:/usr/bin:/bin"
+WorkingDirectory=%h/py_pg_accounts
+ExecStart=%h/.local/bin/python3 run.py --host 192.168.4.44
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

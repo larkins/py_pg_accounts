@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+.env
+
+# Storage (RAG index, ChromaDB, Mem0)
+storage/
+
+# Data files
+data/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Backup directories
+backup_prod_*/
+backups/
+session-ses*
+
+#prompt dumps
+coding_agent/*.txt
+
+*.csv
+
+# Config files with secrets
+config.yaml
+
+# Uploads
+uploads/

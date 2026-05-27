@@ -1,0 +1,20 @@
+database:
+  host: localhost
+  port: 5432
+  name: py_pg_accounts
+  user: postgres
+
+app:
+  host: "192.168.4.44"
+  api_port: 5061
+  hmi_port: 5062
+  secret_key: "change-me-in-production-use-strong-random-key"
+  upload_folder: "uploads"
+  max_content_length: 10485760
+
+accounting:
+  default_gst_type: 0.1
+  financial_year_start_month: 7
+  financial_year_start_day: 1
+  financial_year_end_month: 6
+  financial_year_end_day: 30
