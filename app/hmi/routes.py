@@ -191,7 +191,19 @@ def new_expense():
         currency = request.form.get('currency', 'AUD')
         expense_date_str = request.form.get('expense_date', '')
         account_category_id = request.form.get('account_category_id', '')
+        new_category_name = request.form.get('new_category_name', '').strip()
         attachment = request.files.get('attachment')
+
+        if new_category_name and not account_category_id:
+            existing = AccountCategory.query.filter_by(name=new_category_name).first()
+            if existing:
+                account_category_id = existing.id
+            else:
+                new_category = AccountCategory(name=new_category_name)
+                db.session.add(new_category)
+                db.session.flush()
+                account_category_id = new_category.id
+                categories = AccountCategory.query.order_by(AccountCategory.name).all()
 
         errors = []
 
@@ -330,7 +342,19 @@ def edit_expense(expense_id):
         currency = request.form.get('currency', 'AUD')
         expense_date_str = request.form.get('expense_date', '')
         account_category_id = request.form.get('account_category_id', '')
+        new_category_name = request.form.get('new_category_name', '').strip()
         attachment = request.files.get('attachment')
+
+        if new_category_name and not account_category_id:
+            existing = AccountCategory.query.filter_by(name=new_category_name).first()
+            if existing:
+                account_category_id = existing.id
+            else:
+                new_category = AccountCategory(name=new_category_name)
+                db.session.add(new_category)
+                db.session.flush()
+                account_category_id = new_category.id
+                categories = AccountCategory.query.order_by(AccountCategory.name).all()
 
         errors = []
 
