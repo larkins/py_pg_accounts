@@ -1,7 +1,10 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app
+from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash
 from datetime import date
 from decimal import Decimal
+import os
+import uuid
 
 from app.models import db
 from app.models.user import User
@@ -185,8 +188,10 @@ def new_expense():
         description = request.form.get('description', '').strip()
         ex_gst_amount = request.form.get('ex_gst_amount', '')
         gst_type = request.form.get('gst_type', '0')
+        currency = request.form.get('currency', 'AUD')
         expense_date_str = request.form.get('expense_date', '')
         account_category_id = request.form.get('account_category_id', '')
+        attachment = request.files.get('attachment')
 
         errors = []
 
@@ -206,15 +211,31 @@ def new_expense():
                                    description=description,
                                    ex_gst_amount=ex_gst_amount,
                                    gst_type=gst_type,
+                                   currency=currency,
                                    expense_date=expense_date_str,
                                    account_category_id=account_category_id)
 
         try:
-            ex_gst = Decimal(ex_gst_amount)
+            original_amount = Decimal(ex_gst_amount)
             gst = Decimal(gst_type)
             expense_date = date.fromisoformat(expense_date_str)
-            gst_amount = (ex_gst * gst).quantize(Decimal('0.01'))
-            total_amount = ex_gst + gst_amount
+
+            original_currency_amount = None
+            exchange_rate = None
+            aud_amount = original_amount
+
+            if currency == 'USD':
+                from app.shared.currency import get_usd_to_aud_rate, convert_usd_to_aud
+                exchange_rate = get_usd_to_aud_rate(expense_date_str)
+                if exchange_rate:
+                    original_currency_amount = original_amount
+                    aud_amount = convert_usd_to_aud(original_amount, exchange_rate)
+                else:
+                    flash('Could not fetch exchange rate. Storing as AUD.', 'warning')
+                    currency = 'AUD'
+
+            gst_amount = (aud_amount * gst).quantize(Decimal('0.01'))
+            total_amount = aud_amount + gst_amount
         except (ValueError, Exception) as e:
             flash(f'Invalid data: {str(e)}', 'error')
             return render_template('expense_form.html',
@@ -223,19 +244,50 @@ def new_expense():
                                    description=description,
                                    ex_gst_amount=ex_gst_amount,
                                    gst_type=gst_type,
+                                   currency=currency,
                                    expense_date=expense_date_str,
                                    account_category_id=account_category_id)
+
+        attachment_path = None
+        if attachment and attachment.filename:
+            from werkzeug.utils import secure_filename
+            import os
+            filename = secure_filename(attachment.filename)
+            allowed_extensions = {'pdf', 'png', 'jpg', 'jpeg'}
+            if '.' not in filename or filename.rsplit('.', 1)[1].lower() not in allowed_extensions:
+                flash('Invalid file type. Allowed: PDF, PNG, JPG', 'error')
+                return render_template('expense_form.html',
+                                       categories=categories,
+                                       vendor_name=vendor_name,
+                                       description=description,
+                                       ex_gst_amount=ex_gst_amount,
+                                       gst_type=gst_type,
+                                       currency=currency,
+                                       expense_date=expense_date_str,
+                                       account_category_id=account_category_id)
+
+            upload_folder = os.path.join(current_app.config.get('UPLOAD_FOLDER', 'uploads'), 'expenses')
+            os.makedirs(upload_folder, exist_ok=True)
+            import uuid
+            unique_filename = f'{uuid.uuid4()}_{filename}'
+            filepath = os.path.join(upload_folder, unique_filename)
+            attachment.save(filepath)
+            attachment_path = filepath
 
         expense = Expense(
             user_id=user_id,
             vendor_name=vendor_name,
             description=description,
-            ex_gst_amount=ex_gst,
+            currency=currency,
+            original_currency_amount=original_currency_amount,
+            exchange_rate=exchange_rate,
+            ex_gst_amount=aud_amount,
             gst_amount=gst_amount,
             gst_type=gst,
             total_amount=total_amount,
             expense_date=expense_date,
-            account_category_id=account_category_id if account_category_id else None
+            account_category_id=account_category_id if account_category_id else None,
+            attachment_path=attachment_path
         )
 
         db.session.add(expense)
@@ -275,8 +327,10 @@ def edit_expense(expense_id):
         description = request.form.get('description', '').strip()
         ex_gst_amount = request.form.get('ex_gst_amount', '')
         gst_type = request.form.get('gst_type', '0')
+        currency = request.form.get('currency', 'AUD')
         expense_date_str = request.form.get('expense_date', '')
         account_category_id = request.form.get('account_category_id', '')
+        attachment = request.files.get('attachment')
 
         errors = []
 
@@ -297,20 +351,65 @@ def edit_expense(expense_id):
                                    description=description,
                                    ex_gst_amount=ex_gst_amount,
                                    gst_type=gst_type,
+                                   currency=currency,
                                    expense_date=expense_date_str,
                                    account_category_id=account_category_id)
 
         try:
             old_values = expense.to_dict()
 
+            original_amount = Decimal(ex_gst_amount)
+            gst = Decimal(gst_type)
+            expense_date = date.fromisoformat(expense_date_str)
+
+            original_currency_amount = None
+            exchange_rate = None
+            aud_amount = original_amount
+
+            if currency == 'USD':
+                from app.shared.currency import get_usd_to_aud_rate, convert_usd_to_aud
+                exchange_rate = get_usd_to_aud_rate(expense_date_str)
+                if exchange_rate:
+                    original_currency_amount = original_amount
+                    aud_amount = convert_usd_to_aud(original_amount, exchange_rate)
+                else:
+                    flash('Could not fetch exchange rate. Storing as AUD.', 'warning')
+                    currency = 'AUD'
+
             expense.vendor_name = vendor_name
             expense.description = description
-            expense.ex_gst_amount = Decimal(ex_gst_amount)
-            expense.gst_type = Decimal(gst_type)
-            expense.expense_date = date.fromisoformat(expense_date_str)
+            expense.currency = currency
+            expense.original_currency_amount = original_currency_amount
+            expense.exchange_rate = exchange_rate
+            expense.ex_gst_amount = aud_amount
+            expense.gst_type = gst
+            expense.expense_date = expense_date
             expense.account_category_id = account_category_id if account_category_id else None
             expense.gst_amount = (expense.ex_gst_amount * expense.gst_type).quantize(Decimal('0.01'))
             expense.total_amount = expense.ex_gst_amount + expense.gst_amount
+
+            if attachment and attachment.filename:
+                filename = secure_filename(attachment.filename)
+                allowed_extensions = {'pdf', 'png', 'jpg', 'jpeg'}
+                if '.' not in filename or filename.rsplit('.', 1)[1].lower() not in allowed_extensions:
+                    flash('Invalid file type. Allowed: PDF, PNG, JPG', 'error')
+                    return render_template('expense_form.html',
+                                           categories=categories,
+                                           expense=expense,
+                                           vendor_name=vendor_name,
+                                           description=description,
+                                           ex_gst_amount=ex_gst_amount,
+                                           gst_type=gst_type,
+                                           currency=currency,
+                                           expense_date=expense_date_str,
+                                           account_category_id=account_category_id)
+
+                upload_folder = os.path.join(current_app.config.get('UPLOAD_FOLDER', 'uploads'), 'expenses')
+                os.makedirs(upload_folder, exist_ok=True)
+                unique_filename = f'{uuid.uuid4()}_{filename}'
+                filepath = os.path.join(upload_folder, unique_filename)
+                attachment.save(filepath)
+                expense.attachment_path = filepath
 
             log = ActivityLog(
                 user_id=user_id,
@@ -337,6 +436,7 @@ def edit_expense(expense_id):
                                    description=description,
                                    ex_gst_amount=ex_gst_amount,
                                    gst_type=gst_type,
+                                   currency=currency,
                                    expense_date=expense_date_str,
                                    account_category_id=account_category_id)
 

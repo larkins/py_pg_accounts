@@ -12,6 +12,9 @@ class Expense(db.Model):
     account_category_id = db.Column(db.String(36), db.ForeignKey('account_categories.id'), nullable=True)
     vendor_name = db.Column(db.String(255), nullable=False)
     description = db.Column(db.Text, nullable=True)
+    currency = db.Column(db.String(3), nullable=False, default='AUD')
+    original_currency_amount = db.Column(db.Numeric(12, 2), nullable=True)
+    exchange_rate = db.Column(db.Numeric(10, 6), nullable=True)
     ex_gst_amount = db.Column(db.Numeric(12, 2), nullable=False)
     gst_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
     gst_type = db.Column(db.Numeric(3, 1), nullable=False, default=0)
@@ -39,6 +42,9 @@ class Expense(db.Model):
             'account_category_name': self.account_category.name if self.account_category else None,
             'vendor_name': self.vendor_name,
             'description': self.description,
+            'currency': self.currency,
+            'original_currency_amount': str(self.original_currency_amount) if self.original_currency_amount else None,
+            'exchange_rate': str(self.exchange_rate) if self.exchange_rate else None,
             'ex_gst_amount': str(self.ex_gst_amount),
             'gst_amount': str(self.gst_amount),
             'gst_type': str(self.gst_type),
