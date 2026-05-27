@@ -211,13 +211,34 @@ def create_expense():
         if not vendor_name:
             return jsonify({'error': 'Vendor name is required'}), 400
 
-        ex_gst_amount = validate_decimal(data.get('ex_gst_amount'), required=True, min_value=0)
+        amount = data.get('amount') or data.get('ex_gst_amount')
+        if amount is None:
+            return jsonify({'error': 'Amount is required'}), 400
+
+        input_amount = validate_decimal(amount, required=True, min_value=0)
+        amount_type = data.get('amount_type', 'excludes')
         gst_type = validate_gst_type(data.get('gst_type', 0))
+        currency = data.get('currency', 'AUD')
         expense_date = validate_date_string(data.get('expense_date'), required=True)
         account_category_id = data.get('account_category_id')
 
         if account_category_id and not validate_uuid(account_category_id):
             return jsonify({'error': 'Invalid account category ID'}), 400
+
+        original_currency_amount = None
+        exchange_rate = None
+
+        if currency == 'USD':
+            from app.shared.currency import get_usd_to_aud_rate, convert_usd_to_aud
+            exchange_rate = get_usd_to_aud_rate(data.get('expense_date'))
+            if exchange_rate:
+                original_currency_amount = input_amount
+                input_amount = convert_usd_to_aud(input_amount, exchange_rate)
+
+        if amount_type == 'includes':
+            ex_gst_amount = (input_amount / (Decimal('1') + gst_type)).quantize(Decimal('0.01'))
+        else:
+            ex_gst_amount = input_amount
 
         gst_amount = Expense.calculate_gst(ex_gst_amount, gst_type)
         total_amount = Expense.calculate_total(ex_gst_amount, gst_amount)
@@ -229,6 +250,9 @@ def create_expense():
         user_id=user.id,
         vendor_name=vendor_name,
         description=data.get('description', ''),
+        currency=currency,
+        original_currency_amount=original_currency_amount,
+        exchange_rate=exchange_rate,
         ex_gst_amount=ex_gst_amount,
         gst_amount=gst_amount,
         gst_type=gst_type,
@@ -292,8 +316,31 @@ def update_expense(expense_id):
         if 'description' in data:
             expense.description = data['description']
 
-        if 'ex_gst_amount' in data:
-            expense.ex_gst_amount = validate_decimal(data['ex_gst_amount'], required=True, min_value=0)
+        amount_type = data.get('amount_type', 'excludes')
+
+        if 'amount' in data or 'ex_gst_amount' in data:
+            input_amount = validate_decimal(data.get('amount') or data.get('ex_gst_amount'), required=True, min_value=0)
+            currency = data.get('currency', expense.currency or 'AUD')
+
+            original_currency_amount = None
+            exchange_rate = None
+
+            if currency == 'USD':
+                from app.shared.currency import get_usd_to_aud_rate, convert_usd_to_aud
+                expense_date_str = data.get('expense_date') or expense.expense_date.isoformat()
+                exchange_rate = get_usd_to_aud_rate(expense_date_str)
+                if exchange_rate:
+                    original_currency_amount = input_amount
+                    input_amount = convert_usd_to_aud(input_amount, exchange_rate)
+
+            if amount_type == 'includes':
+                expense.ex_gst_amount = (input_amount / (Decimal('1') + expense.gst_type)).quantize(Decimal('0.01'))
+            else:
+                expense.ex_gst_amount = input_amount
+
+            expense.currency = currency
+            expense.original_currency_amount = original_currency_amount
+            expense.exchange_rate = exchange_rate
 
         if 'gst_type' in data:
             expense.gst_type = validate_gst_type(data['gst_type'])
@@ -305,6 +352,9 @@ def update_expense(expense_id):
             if data['account_category_id'] and not validate_uuid(data['account_category_id']):
                 return jsonify({'error': 'Invalid account category ID'}), 400
             expense.account_category_id = data['account_category_id']
+
+        if 'currency' in data:
+            expense.currency = data['currency']
 
         expense.gst_amount = Expense.calculate_gst(expense.ex_gst_amount, expense.gst_type)
         expense.total_amount = Expense.calculate_total(expense.ex_gst_amount, expense.gst_amount)

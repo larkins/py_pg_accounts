@@ -44,9 +44,11 @@ class AccountingSkill:
     def create_expense(
         self,
         vendor_name: str,
-        ex_gst_amount: float,
+        amount: float,
         expense_date: str,
         gst_type: float = 0.1,
+        amount_type: str = "excludes",
+        currency: str = "AUD",
         description: str = "",
         account_category_id: Optional[str] = None
     ) -> Dict[str, Any]:
@@ -55,9 +57,11 @@ class AccountingSkill:
 
         Args:
             vendor_name: Name of the vendor/supplier
-            ex_gst_amount: Amount excluding GST
+            amount: Amount (excludes or includes GST depending on amount_type)
             expense_date: Date of expense in YYYY-MM-DD format
             gst_type: GST type (0 for no GST, 0.1 for 10% GST)
+            amount_type: 'excludes' (default) or 'includes' GST
+            currency: 'AUD' (default) or 'USD'
             description: Optional description of the expense
             account_category_id: Optional UUID of the account category
 
@@ -66,7 +70,9 @@ class AccountingSkill:
         """
         data = {
             'vendor_name': vendor_name,
-            'ex_gst_amount': str(ex_gst_amount),
+            'amount': str(amount),
+            'amount_type': amount_type,
+            'currency': currency,
             'expense_date': expense_date,
             'gst_type': str(gst_type),
             'description': description
@@ -117,16 +123,16 @@ class AccountingSkill:
 
         Args:
             expense_id: UUID of the expense to update
-            **kwargs: Any expense fields to update (vendor_name, ex_gst_amount, etc.)
+            **kwargs: Any expense fields to update (vendor_name, amount, amount_type, currency, gst_type, etc.)
 
         Returns:
             Dictionary containing the updated expense data
         """
         data = {}
         for key, value in kwargs.items():
-            if key in ['vendor_name', 'description', 'expense_date', 'account_category_id']:
+            if key in ['vendor_name', 'description', 'expense_date', 'account_category_id', 'amount_type', 'currency']:
                 data[key] = value
-            elif key in ['ex_gst_amount', 'gst_type']:
+            elif key in ['amount', 'ex_gst_amount', 'gst_type']:
                 data[key] = str(value)
 
         result = self._make_request('PUT', f'/api/expenses/{expense_id}', data)
