@@ -13,7 +13,7 @@ Environment="DB_USER=postgres"
 Environment="DB_PASSWORD=1234"
 WorkingDirectory=%h/py_pg_accounts
 ExecStartPre=/bin/sleep 5
-ExecStart=%h/py_pg_accounts/venv/bin/python3 run.py --host 0.0.0.0
+ExecStart=%h/py_pg_accounts/venv/bin/python3 run.py --host 192.168.4.44
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal
