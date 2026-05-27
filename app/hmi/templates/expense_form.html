@@ -19,14 +19,21 @@
 
         <div class="form-row">
             <div class="form-group">
-                <label for="ex_gst_amount">Ex-GST Amount *</label>
-                <input type="number" id="ex_gst_amount" name="ex_gst_amount" step="0.01" min="0" required value="{{ ex_gst_amount or (expense.ex_gst_amount|string if expense) }}">
+                <label for="amount">Amount *</label>
+                <input type="number" id="amount" name="amount" step="0.01" min="0" required value="{{ amount or (expense.ex_gst_amount|string if expense) }}">
+            </div>
+            <div class="form-group">
+                <label for="amount_type">Amount Type</label>
+                <select id="amount_type" name="amount_type">
+                    <option value="excludes" {% if amount_type == 'excludes' or not expense %}selected{% endif %}>Excludes GST</option>
+                    <option value="includes" {% if amount_type == 'includes' %}selected{% endif %}>Includes GST</option>
+                </select>
             </div>
             <div class="form-group">
                 <label for="currency">Currency</label>
                 <select id="currency" name="currency">
-                    <option value="AUD" {% if (currency or expense.currency if expense) == 'AUD' %}selected{% endif %}>AUD - Australian Dollar</option>
-                    <option value="USD" {% if (currency or expense.currency if expense) == 'USD' %}selected{% endif %}>USD - US Dollar</option>
+                    <option value="AUD" {% if (currency or expense.currency if expense) == 'AUD' %}selected{% endif %}>AUD</option>
+                    <option value="USD" {% if (currency or expense.currency if expense) == 'USD' %}selected{% endif %}>USD</option>
                 </select>
             </div>
             <div class="form-group">

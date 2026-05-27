@@ -186,7 +186,8 @@ def new_expense():
     if request.method == 'POST':
         vendor_name = request.form.get('vendor_name', '').strip()
         description = request.form.get('description', '').strip()
-        ex_gst_amount = request.form.get('ex_gst_amount', '')
+        amount = request.form.get('amount', '')
+        amount_type = request.form.get('amount_type', 'excludes')
         gst_type = request.form.get('gst_type', '0')
         currency = request.form.get('currency', 'AUD')
         expense_date_str = request.form.get('expense_date', '')
@@ -209,8 +210,8 @@ def new_expense():
 
         if not vendor_name:
             errors.append('Vendor name is required')
-        if not ex_gst_amount:
-            errors.append('Ex-GST amount is required')
+        if not amount:
+            errors.append('Amount is required')
         if not expense_date_str:
             errors.append('Expense date is required')
 
@@ -221,30 +222,35 @@ def new_expense():
                                    categories=categories,
                                    vendor_name=vendor_name,
                                    description=description,
-                                   ex_gst_amount=ex_gst_amount,
+                                   amount=amount,
+                                   amount_type=amount_type,
                                    gst_type=gst_type,
                                    currency=currency,
                                    expense_date=expense_date_str,
                                    account_category_id=account_category_id)
 
         try:
-            original_amount = Decimal(ex_gst_amount)
+            input_amount = Decimal(amount)
             gst = Decimal(gst_type)
             expense_date = date.fromisoformat(expense_date_str)
 
             original_currency_amount = None
             exchange_rate = None
-            aud_amount = original_amount
 
             if currency == 'USD':
                 from app.shared.currency import get_usd_to_aud_rate, convert_usd_to_aud
                 exchange_rate = get_usd_to_aud_rate(expense_date_str)
                 if exchange_rate:
-                    original_currency_amount = original_amount
-                    aud_amount = convert_usd_to_aud(original_amount, exchange_rate)
+                    original_currency_amount = input_amount
+                    input_amount = convert_usd_to_aud(input_amount, exchange_rate)
                 else:
                     flash('Could not fetch exchange rate. Storing as AUD.', 'warning')
                     currency = 'AUD'
+
+            if amount_type == 'includes':
+                aud_amount = (input_amount / (Decimal('1') + gst)).quantize(Decimal('0.01'))
+            else:
+                aud_amount = input_amount
 
             gst_amount = (aud_amount * gst).quantize(Decimal('0.01'))
             total_amount = aud_amount + gst_amount
@@ -254,7 +260,8 @@ def new_expense():
                                    categories=categories,
                                    vendor_name=vendor_name,
                                    description=description,
-                                   ex_gst_amount=ex_gst_amount,
+                                   amount=amount,
+                                   amount_type=amount_type,
                                    gst_type=gst_type,
                                    currency=currency,
                                    expense_date=expense_date_str,
@@ -337,7 +344,8 @@ def edit_expense(expense_id):
     if request.method == 'POST':
         vendor_name = request.form.get('vendor_name', '').strip()
         description = request.form.get('description', '').strip()
-        ex_gst_amount = request.form.get('ex_gst_amount', '')
+        amount = request.form.get('amount', '')
+        amount_type = request.form.get('amount_type', 'excludes')
         gst_type = request.form.get('gst_type', '0')
         currency = request.form.get('currency', 'AUD')
         expense_date_str = request.form.get('expense_date', '')
@@ -360,8 +368,8 @@ def edit_expense(expense_id):
 
         if not vendor_name:
             errors.append('Vendor name is required')
-        if not ex_gst_amount:
-            errors.append('Ex-GST amount is required')
+        if not amount:
+            errors.append('Amount is required')
         if not expense_date_str:
             errors.append('Expense date is required')
 
@@ -373,7 +381,8 @@ def edit_expense(expense_id):
                                    expense=expense,
                                    vendor_name=vendor_name,
                                    description=description,
-                                   ex_gst_amount=ex_gst_amount,
+                                   amount=amount,
+                                   amount_type=amount_type,
                                    gst_type=gst_type,
                                    currency=currency,
                                    expense_date=expense_date_str,
@@ -382,23 +391,27 @@ def edit_expense(expense_id):
         try:
             old_values = expense.to_dict()
 
-            original_amount = Decimal(ex_gst_amount)
+            input_amount = Decimal(amount)
             gst = Decimal(gst_type)
             expense_date = date.fromisoformat(expense_date_str)
 
             original_currency_amount = None
             exchange_rate = None
-            aud_amount = original_amount
 
             if currency == 'USD':
                 from app.shared.currency import get_usd_to_aud_rate, convert_usd_to_aud
                 exchange_rate = get_usd_to_aud_rate(expense_date_str)
                 if exchange_rate:
-                    original_currency_amount = original_amount
-                    aud_amount = convert_usd_to_aud(original_amount, exchange_rate)
+                    original_currency_amount = input_amount
+                    input_amount = convert_usd_to_aud(input_amount, exchange_rate)
                 else:
                     flash('Could not fetch exchange rate. Storing as AUD.', 'warning')
                     currency = 'AUD'
+
+            if amount_type == 'includes':
+                aud_amount = (input_amount / (Decimal('1') + gst)).quantize(Decimal('0.01'))
+            else:
+                aud_amount = input_amount
 
             expense.vendor_name = vendor_name
             expense.description = description
@@ -422,7 +435,8 @@ def edit_expense(expense_id):
                                            expense=expense,
                                            vendor_name=vendor_name,
                                            description=description,
-                                           ex_gst_amount=ex_gst_amount,
+                                           amount=amount,
+                                           amount_type=amount_type,
                                            gst_type=gst_type,
                                            currency=currency,
                                            expense_date=expense_date_str,
@@ -458,7 +472,8 @@ def edit_expense(expense_id):
                                    expense=expense,
                                    vendor_name=vendor_name,
                                    description=description,
-                                   ex_gst_amount=ex_gst_amount,
+                                   amount=amount,
+                                   amount_type=amount_type,
                                    gst_type=gst_type,
                                    currency=currency,
                                    expense_date=expense_date_str,
@@ -533,7 +548,8 @@ def new_invoice():
     if request.method == 'POST':
         client_name = request.form.get('client_name', '').strip()
         description = request.form.get('description', '').strip()
-        ex_gst_amount = request.form.get('ex_gst_amount', '')
+        amount = request.form.get('amount', '')
+        amount_type = request.form.get('amount_type', 'excludes')
         gst_type = request.form.get('gst_type', '0')
         invoice_date_str = request.form.get('invoice_date', '')
         due_date_str = request.form.get('due_date', '')
@@ -543,8 +559,8 @@ def new_invoice():
 
         if not client_name:
             errors.append('Client name is required')
-        if not ex_gst_amount:
-            errors.append('Ex-GST amount is required')
+        if not amount:
+            errors.append('Amount is required')
         if not invoice_date_str:
             errors.append('Invoice date is required')
 
@@ -555,26 +571,34 @@ def new_invoice():
                                    categories=categories,
                                    client_name=client_name,
                                    description=description,
-                                   ex_gst_amount=ex_gst_amount,
+                                   amount=amount,
+                                   amount_type=amount_type,
                                    gst_type=gst_type,
                                    invoice_date=invoice_date_str,
                                    due_date=due_date_str,
                                    account_category_id=account_category_id)
 
         try:
-            ex_gst = Decimal(ex_gst_amount)
+            input_amount = Decimal(amount)
             gst = Decimal(gst_type)
             invoice_date = date.fromisoformat(invoice_date_str)
             due_date = date.fromisoformat(due_date_str) if due_date_str else None
-            gst_amount = (ex_gst * gst).quantize(Decimal('0.01'))
-            total_amount = ex_gst + gst_amount
+
+            if amount_type == 'includes':
+                ex_gst_amount = (input_amount / (Decimal('1') + gst)).quantize(Decimal('0.01'))
+            else:
+                ex_gst_amount = input_amount
+
+            gst_amount = (ex_gst_amount * gst).quantize(Decimal('0.01'))
+            total_amount = ex_gst_amount + gst_amount
         except (ValueError, Exception) as e:
             flash(f'Invalid data: {str(e)}', 'error')
             return render_template('invoice_form.html',
                                    categories=categories,
                                    client_name=client_name,
                                    description=description,
-                                   ex_gst_amount=ex_gst_amount,
+                                   amount=amount,
+                                   amount_type=amount_type,
                                    gst_type=gst_type,
                                    invoice_date=invoice_date_str,
                                    due_date=due_date_str,
@@ -584,7 +608,7 @@ def new_invoice():
             user_id=user_id,
             client_name=client_name,
             description=description,
-            ex_gst_amount=ex_gst,
+            ex_gst_amount=ex_gst_amount,
             gst_amount=gst_amount,
             gst_type=gst,
             total_amount=total_amount,
@@ -628,7 +652,8 @@ def edit_invoice(invoice_id):
     if request.method == 'POST':
         client_name = request.form.get('client_name', '').strip()
         description = request.form.get('description', '').strip()
-        ex_gst_amount = request.form.get('ex_gst_amount', '')
+        amount = request.form.get('amount', '')
+        amount_type = request.form.get('amount_type', 'excludes')
         gst_type = request.form.get('gst_type', '0')
         invoice_date_str = request.form.get('invoice_date', '')
         due_date_str = request.form.get('due_date', '')
@@ -638,8 +663,8 @@ def edit_invoice(invoice_id):
 
         if not client_name:
             errors.append('Client name is required')
-        if not ex_gst_amount:
-            errors.append('Ex-GST amount is required')
+        if not amount:
+            errors.append('Amount is required')
         if not invoice_date_str:
             errors.append('Invoice date is required')
 
@@ -651,7 +676,8 @@ def edit_invoice(invoice_id):
                                    invoice=invoice,
                                    client_name=client_name,
                                    description=description,
-                                   ex_gst_amount=ex_gst_amount,
+                                   amount=amount,
+                                   amount_type=amount_type,
                                    gst_type=gst_type,
                                    invoice_date=invoice_date_str,
                                    due_date=due_date_str,
@@ -660,10 +686,18 @@ def edit_invoice(invoice_id):
         try:
             old_values = invoice.to_dict()
 
+            input_amount = Decimal(amount)
+            gst = Decimal(gst_type)
+
+            if amount_type == 'includes':
+                ex_gst_amount = (input_amount / (Decimal('1') + gst)).quantize(Decimal('0.01'))
+            else:
+                ex_gst_amount = input_amount
+
             invoice.client_name = client_name
             invoice.description = description
-            invoice.ex_gst_amount = Decimal(ex_gst_amount)
-            invoice.gst_type = Decimal(gst_type)
+            invoice.ex_gst_amount = ex_gst_amount
+            invoice.gst_type = gst
             invoice.invoice_date = date.fromisoformat(invoice_date_str)
             invoice.due_date = date.fromisoformat(due_date_str) if due_date_str else None
             invoice.account_category_id = account_category_id if account_category_id else None
@@ -693,7 +727,8 @@ def edit_invoice(invoice_id):
                                    invoice=invoice,
                                    client_name=client_name,
                                    description=description,
-                                   ex_gst_amount=ex_gst_amount,
+                                   amount=amount,
+                                   amount_type=amount_type,
                                    gst_type=gst_type,
                                    invoice_date=invoice_date_str,
                                    due_date=due_date_str,

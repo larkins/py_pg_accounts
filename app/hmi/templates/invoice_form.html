@@ -19,14 +19,21 @@
 
         <div class="form-row">
             <div class="form-group">
-                <label for="ex_gst_amount">Ex-GST Amount *</label>
-                <input type="number" id="ex_gst_amount" name="ex_gst_amount" step="0.01" min="0" required value="{{ ex_gst_amount or (invoice.ex_gst_amount|string if invoice) }}">
+                <label for="amount">Amount *</label>
+                <input type="number" id="amount" name="amount" step="0.01" min="0" required value="{{ amount or (invoice.ex_gst_amount|string if invoice) }}">
+            </div>
+            <div class="form-group">
+                <label for="amount_type">Amount Type</label>
+                <select id="amount_type" name="amount_type">
+                    <option value="excludes" {% if amount_type == 'excludes' or not invoice %}selected{% endif %}>Excludes GST</option>
+                    <option value="includes" {% if amount_type == 'includes' %}selected{% endif %}>Includes GST</option>
+                </select>
             </div>
             <div class="form-group">
                 <label for="gst_type">GST Type</label>
                 <select id="gst_type" name="gst_type">
-                    <option value="0" {% if (gst_type or invoice.gst_type|string if invoice) == '0' %}selected{% endif %}>No GST (0%)</option>
                     <option value="0.1" {% if (gst_type or invoice.gst_type|string if invoice) == '0.1' %}selected{% endif %}>GST (10%)</option>
+                    <option value="0" {% if (gst_type or invoice.gst_type|string if invoice) == '0' %}selected{% endif %}>No GST (0%)</option>
                 </select>
             </div>
         </div>
