@@ -27,7 +27,10 @@ def create_app(config_path=None):
             }
         }
 
-    db_url = f"postgresql://{config['database']['user']}@{config['database']['host']}:{config['database']['port']}/{config['database']['name']}"
+    if 'database' in config and 'password' in config['database']:
+        db_url = f"postgresql://{config['database']['user']}:{config['database']['password']}@{config['database']['host']}:{config['database']['port']}/{config['database']['name']}"
+    else:
+        db_url = f"postgresql://{os.environ.get('DB_USER', 'postgres')}:{os.environ.get('DB_PASSWORD', '')}@{os.environ.get('DB_HOST', 'localhost')}:{os.environ.get('DB_PORT', '5432')}/{os.environ.get('DB_NAME', 'py_pg_accounts')}"
     app.config['SQLALCHEMY_DATABASE_URI'] = db_url
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['SECRET_KEY'] = config['app'].get('secret_key', 'dev-secret-key')
