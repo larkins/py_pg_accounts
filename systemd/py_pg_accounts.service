@@ -5,9 +5,14 @@ Wants=postgresql.service
 
 [Service]
 Type=simple
-Environment="PATH=/home/%u/.local/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="PATH=%h/py_pg_accounts/venv/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="DB_HOST=localhost"
+Environment="DB_PORT=5432"
+Environment="DB_NAME=py_pg_accounts"
+Environment="DB_USER=postgres"
+Environment="DB_PASSWORD=1234"
 WorkingDirectory=%h/py_pg_accounts
-ExecStart=%h/.local/bin/python3 run.py --host 192.168.4.44
+ExecStart=%h/py_pg_accounts/venv/bin/python3 run.py --host 192.168.4.44
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal

@@ -22,8 +22,6 @@ class Invoice(db.Model):
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=get_utc_now)
     updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=get_utc_now, onupdate=get_utc_now)
 
-    activity_logs = db.relationship('ActivityLog', backref='invoice', lazy='dynamic')
-
     @staticmethod
     def calculate_gst(ex_gst_amount, gst_type):
         ex_gst = Decimal(str(ex_gst_amount))
