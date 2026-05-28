@@ -10,9 +10,10 @@ import os
 import sys
 import time
 import json
+import re
 import base64
 import argparse
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 import requests
 
@@ -85,35 +86,83 @@ def process_ocr_job(job, app, ollama_host, model, timeout):
 
             raw_response = call_vision_model(job.image_path, ollama_host, model, timeout)
 
-            data = json.loads(raw_response)
+            def extract_json(text):
+                text = text.strip()
+                start = text.find('{')
+                if start == -1:
+                    return text
+                depth = 0
+                end = start
+                for i, c in enumerate(text[start:], start):
+                    if c == '{':
+                        depth += 1
+                    elif c == '}':
+                        depth -= 1
+                        if depth == 0:
+                            end = i + 1
+                            break
+                return text[start:end]
 
-            if data.get('vendor_name'):
-                expense.vendor_name = data['vendor_name']
-            if data.get('description'):
-                expense.description = data['description']
-            if data.get('expense_date'):
+            try:
+                data = json.loads(raw_response)
+            except json.JSONDecodeError:
+                cleaned = extract_json(raw_response)
                 try:
-                    expense.expense_date = datetime.strptime(data['expense_date'], '%Y-%m-%d').date()
+                    data = json.loads(cleaned)
+                except json.JSONDecodeError:
+                    data = {}
+
+            def get_value(data, *keys):
+                for key in keys:
+                    if key in data:
+                        return data[key]
+                return None
+
+            vendor = get_value(data, 'vendor_name', 'vendor', 'business_name', 'supplier')
+            if vendor and isinstance(vendor, str):
+                expense.vendor_name = vendor
+
+            desc = get_value(data, 'description', 'notes', 'memo')
+            if desc and isinstance(desc, str):
+                expense.description = desc
+
+            date_str = get_value(data, 'expense_date', 'date', 'transaction_date')
+            if date_str and isinstance(date_str, str):
+                try:
+                    expense.expense_date = datetime.strptime(date_str, '%Y-%m-%d').date()
                 except (ValueError, TypeError):
                     pass
-            if data.get('ex_gst_amount') is not None:
+
+            ex_gst = get_value(data, 'ex_gst_amount', 'amount_ex_gst', 'subtotal', 'amount_before_gst')
+            if ex_gst is not None:
                 try:
-                    expense.ex_gst_amount = Decimal(str(data['ex_gst_amount']))
+                    expense.ex_gst_amount = Decimal(str(ex_gst))
                 except (ValueError, TypeError):
                     pass
-            if data.get('gst_amount') is not None:
+
+            gst_amt = get_value(data, 'gst_amount', 'gst', 'tax_amount')
+            if gst_amt is not None:
                 try:
-                    expense.gst_amount = Decimal(str(data['gst_amount']))
+                    expense.gst_amount = Decimal(str(gst_amt))
                 except (ValueError, TypeError):
                     pass
-            if data.get('gst_type') is not None:
+
+            gst_t = get_value(data, 'gst_type', 'tax_rate', 'gst_rate')
+            if gst_t is not None:
                 try:
-                    expense.gst_type = Decimal(str(data['gst_type']))
+                    expense.gst_type = Decimal(str(gst_t))
                 except (ValueError, TypeError):
                     pass
 
             if expense.ex_gst_amount and expense.gst_amount:
                 expense.total_amount = expense.ex_gst_amount + expense.gst_amount
+
+            if not data or not any(v for v in data.values() if v is not None):
+                job.status = 'failed'
+                job.error_message = 'No data could be extracted from model response'
+                job.processed_at = datetime.now(timezone.utc)
+                db.session.commit()
+                return
 
             job.status = 'completed'
             job.extracted_data = data
@@ -140,6 +189,17 @@ def run_processor(ollama_host, model, timeout, poll_interval=5, max_attempts=3):
 
     while True:
         with app.app_context():
+            stale_timeout = 300
+            stale_jobs = OcrQueue.query.filter(
+                OcrQueue.status == 'processing',
+                OcrQueue.created_at < datetime.now(timezone.utc) - timedelta(seconds=stale_timeout)
+            ).all()
+            for stale_job in stale_jobs:
+                stale_job.status = 'pending'
+                stale_job.error_message = 'Stale job reset'
+                db.session.commit()
+                print(f'Reset stale job {stale_job.id}')
+
             pending_jobs = OcrQueue.query.filter_by(status='pending').order_by(OcrQueue.created_at).limit(10).all()
 
             if pending_jobs:
