@@ -27,17 +27,16 @@ from app.models.expense import Expense
 from app.models.ocr_queue import OcrQueue
 
 
-PROMPT = """You are an OCR system for Australian receipts. Extract the following information from this receipt image and return ONLY valid JSON with these exact keys:
-- vendor_name: the business name (string)
-- expense_date: the date on the receipt in YYYY-MM-DD format (string)
-- ex_gst_amount: the amount before GST as a number (number)
-- gst_amount: the GST amount as a number (number)
-- gst_type: the GST rate as a decimal (e.g., 0.1 for 10%) (number)
-- description: any notes or description from the receipt (string, can be empty)
+PROMPT = """You are an OCR system for Australian receipts. Extract the following information from this receipt image and return ONLY valid JSON with these exact keys (no other text):
+- vendor_name: the business name (string in quotes)
+- expense_date: the date on the receipt in YYYY-MM-DD format (string in quotes)
+- ex_gst_amount: the amount before GST as a decimal number, NOT a string (e.g., 45.50)
+- gst_amount: the GST amount as a decimal number, NOT a string (e.g., 4.55)
+- gst_type: the GST rate as a decimal (0.1 for 10%, 0 for no GST), NOT a string
+- description: any notes or description from the receipt (string in quotes, can be empty string "")
 
-If information is not available or illegible, use null for that field.
-Do not include any text other than the JSON object.
-Example output: {"vendor_name": "Bunnings", "expense_date": "2024-03-15", "ex_gst_amount": 45.50, "gst_amount": 4.55, "gst_type": 0.1, "description": "Hardware supplies"}"""
+IMPORTANT: All numbers must be JSON numbers, NOT strings. Do NOT use quotes around numbers.
+Example: {"vendor_name": "Bunnings", "expense_date": "2024-03-15", "ex_gst_amount": 45.50, "gst_amount": 4.55, "gst_type": 0.1, "description": ""}"""
 
 
 def encode_image(image_path):
@@ -122,9 +121,8 @@ def process_ocr_job(job, app, ollama_host, model, timeout):
             db.session.commit()
 
         except json.JSONDecodeError as e:
-            job.status = 'failed'
+            job.status = 'pending'
             job.error_message = f'JSON parse error: {str(e)} - Response: {raw_response[:500] if raw_response else "empty"}'
-            job.processed_at = datetime.now(timezone.utc)
             db.session.commit()
 
         except Exception as e:
