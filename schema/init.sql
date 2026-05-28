@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS expenses (
     total_amount NUMERIC(12, 2) NOT NULL,
     expense_date DATE NOT NULL,
     attachment_path VARCHAR(500),
+    requires_review BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -53,6 +54,7 @@ CREATE TABLE IF NOT EXISTS expenses (
 CREATE INDEX IF NOT EXISTS idx_expenses_user_id ON expenses(user_id);
 CREATE INDEX IF NOT EXISTS idx_expenses_expense_date ON expenses(expense_date);
 CREATE INDEX IF NOT EXISTS idx_expenses_created_at ON expenses(created_at);
+CREATE INDEX IF NOT EXISTS idx_expenses_requires_review ON expenses(requires_review);
 
 -- Invoices table
 CREATE TABLE IF NOT EXISTS invoices (

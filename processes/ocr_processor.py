@@ -28,7 +28,7 @@ from app.models.expense import Expense
 from app.models.ocr_queue import OcrQueue
 
 
-PROMPT = """You are an OCR system for Australian receipts. Extract the following information from this receipt image and return ONLY valid JSON with these exact keys (no other text):
+BASE_PROMPT = """You are an OCR system for Australian receipts. Extract the following information from this receipt image and return ONLY valid JSON with these exact keys (no other text):
 - vendor_name: the business name (string in quotes)
 - expense_date: the date on the receipt in YYYY-MM-DD format (string in quotes)
 - ex_gst_amount: the amount before GST as a decimal number, NOT a string (e.g., 45.50)
@@ -39,18 +39,28 @@ PROMPT = """You are an OCR system for Australian receipts. Extract the following
 IMPORTANT: All numbers must be JSON numbers, NOT strings. Do NOT use quotes around numbers.
 Example: {"vendor_name": "Bunnings", "expense_date": "2024-03-15", "ex_gst_amount": 45.50, "gst_amount": 4.55, "gst_type": 0.1, "description": ""}"""
 
+ATTEMPT_PROMPTS = {
+    1: BASE_PROMPT,
+    2: BASE_PROMPT + "\n\nIf the image is unclear or partially illegible, provide your best guess for each field and set description to 'REQUIRES REVIEW'.",
+    3: BASE_PROMPT + "\n\nIMPORTANT: If fields are unclear or illegible, you MUST provide your best guess. Set description to 'REQUIRES REVIEW' and include any partial information you can read. Do not leave fields empty - always provide a value or your best estimate."
+}
+
+
+def get_prompt(attempt):
+    return ATTEMPT_PROMPTS.get(attempt, ATTEMPT_PROMPTS[3])
+
 
 def encode_image(image_path):
     with open(image_path, 'rb') as f:
         return base64.b64encode(f.read()).decode('utf-8')
 
 
-def call_vision_model(image_path, ollama_host, model, timeout):
+def call_vision_model(image_path, ollama_host, model, timeout, prompt):
     image_b64 = encode_image(image_path)
 
     payload = {
         'model': model,
-        'prompt': PROMPT,
+        'prompt': prompt,
         'images': [image_b64],
         'stream': False,
         'format': 'json'
@@ -84,7 +94,8 @@ def process_ocr_job(job, app, ollama_host, model, timeout):
             job.attempts += 1
             db.session.commit()
 
-            raw_response = call_vision_model(job.image_path, ollama_host, model, timeout)
+            prompt = get_prompt(job.attempts)
+            raw_response = call_vision_model(job.image_path, ollama_host, model, timeout, prompt)
 
             def extract_json(text):
                 text = text.strip()
@@ -158,11 +169,16 @@ def process_ocr_job(job, app, ollama_host, model, timeout):
                 expense.total_amount = expense.ex_gst_amount + expense.gst_amount
 
             if not data or not any(v for v in data.values() if v is not None):
+                expense.vendor_name = 'REQUIRES REVIEW'
+                expense.requires_review = True
                 job.status = 'failed'
                 job.error_message = 'No data could be extracted from model response'
                 job.processed_at = datetime.now(timezone.utc)
                 db.session.commit()
                 return
+
+            if desc == 'REQUIRES REVIEW':
+                expense.requires_review = True
 
             job.status = 'completed'
             job.extracted_data = data
@@ -170,13 +186,19 @@ def process_ocr_job(job, app, ollama_host, model, timeout):
             db.session.commit()
 
         except json.JSONDecodeError as e:
-            job.status = 'pending'
+            expense.vendor_name = 'REQUIRES REVIEW'
+            expense.requires_review = True
+            job.status = 'failed'
             job.error_message = f'JSON parse error: {str(e)} - Response: {raw_response[:500] if raw_response else "empty"}'
+            job.processed_at = datetime.now(timezone.utc)
             db.session.commit()
 
         except Exception as e:
-            job.status = 'pending'
+            expense.vendor_name = 'REQUIRES REVIEW'
+            expense.requires_review = True
+            job.status = 'failed'
             job.error_message = str(e)
+            job.processed_at = datetime.now(timezone.utc)
             db.session.commit()
 
 

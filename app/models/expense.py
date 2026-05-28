@@ -22,6 +22,7 @@ class Expense(db.Model):
     total_amount = db.Column(db.Numeric(12, 2), nullable=False)
     expense_date = db.Column(db.Date, nullable=False)
     attachment_path = db.Column(db.String(500), nullable=True)
+    requires_review = db.Column(db.Boolean, nullable=False, default=False, index=True)
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=get_utc_now)
     updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=get_utc_now, onupdate=get_utc_now)
 
@@ -53,6 +54,7 @@ class Expense(db.Model):
             'total_amount': str(self.total_amount),
             'expense_date': self.expense_date.isoformat() if self.expense_date else None,
             'attachment_path': self.attachment_path,
+            'requires_review': self.requires_review,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
