@@ -24,6 +24,11 @@ def create_app(config_path=None):
                 'secret_key': os.environ.get('SECRET_KEY', 'dev-secret-key'),
                 'upload_folder': os.environ.get('UPLOAD_FOLDER', 'uploads'),
                 'max_content_length': 10485760
+            },
+            'vision': {
+                'ollama_host': os.environ.get('DEFAULT_LOCAL_VISION_OLLAMA_HOST', 'http://localhost:11434'),
+                'model': os.environ.get('DEFAULT_LOCAL_VISION_MODEL', 'gemma4:31b'),
+                'timeout': float(os.environ.get('DEFAULT_LOCAL_VISION_TIMEOUT', 2100.0))
             }
         }
 
@@ -36,6 +41,10 @@ def create_app(config_path=None):
     app.config['SECRET_KEY'] = config['app'].get('secret_key', 'dev-secret-key')
     app.config['UPLOAD_FOLDER'] = config['app'].get('upload_folder', 'uploads')
     app.config['MAX_CONTENT_LENGTH'] = config['app'].get('max_content_length', 10485760)
+
+    app.config['VISION_OLLAMA_HOST'] = config.get('vision', {}).get('ollama_host', 'http://localhost:11434')
+    app.config['VISION_MODEL'] = config.get('vision', {}).get('model', 'gemma4:31b')
+    app.config['VISION_TIMEOUT'] = config.get('vision', {}).get('timeout', 2100.0)
 
     db.init_app(app)
 

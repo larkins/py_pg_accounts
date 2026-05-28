@@ -93,6 +93,22 @@ CREATE INDEX IF NOT EXISTS idx_activity_logs_created_at ON activity_logs(created
 CREATE INDEX IF NOT EXISTS idx_activity_logs_table_name ON activity_logs(table_name);
 CREATE INDEX IF NOT EXISTS idx_activity_logs_record_id ON activity_logs(record_id);
 
+-- OCR Queue table
+CREATE TABLE IF NOT EXISTS ocr_queue (
+    id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v4()::text,
+    expense_id VARCHAR(36) NOT NULL REFERENCES expenses(id) ON DELETE CASCADE,
+    image_path VARCHAR(500) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    extracted_data JSONB,
+    error_message TEXT,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    processed_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_ocr_queue_expense_id ON ocr_queue(expense_id);
+CREATE INDEX IF NOT EXISTS idx_ocr_queue_status ON ocr_queue(status);
+
 -- Function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
@@ -127,3 +143,4 @@ COMMENT ON TABLE account_categories IS 'Chart of accounts categories for classif
 COMMENT ON TABLE expenses IS 'Expense records with GST tracking';
 COMMENT ON TABLE invoices IS 'Invoice records with GST tracking';
 COMMENT ON TABLE activity_logs IS 'Audit trail of all database modifications';
+COMMENT ON TABLE ocr_queue IS 'Queue for OCR processing of receipt images via vision model';

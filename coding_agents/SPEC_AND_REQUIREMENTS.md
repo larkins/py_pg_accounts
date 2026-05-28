@@ -40,6 +40,8 @@ Open-source accounting software built with Python, Flask, and PostgreSQL. Design
 | password_hash | VARCHAR(255) | Bcrypt hashed password |
 | country | VARCHAR(50) | Country code (default: 'AU') |
 | api_key | VARCHAR(64) | Unique API key for agent access |
+| email_verified | BOOLEAN | Email verification status (default: FALSE) |
+| verification_token | VARCHAR(64) | Token for email verification |
 | created_at | TIMESTAMPTZ | Creation timestamp |
 | updated_at | TIMESTAMPTZ | Last update timestamp |
 
@@ -98,6 +100,19 @@ Open-source accounting software built with Python, Flask, and PostgreSQL. Design
 | new_values | JSONB | New values (for creates/updates) |
 | ip_address | VARCHAR(45) | Client IP address |
 | created_at | TIMESTAMPTZ | Action timestamp |
+
+#### ocr_queue
+| Column | Type | Description |
+|--------|------|-------------|
+| id | UUID | Primary key |
+| expense_id | UUID | Foreign key to expenses |
+| image_path | VARCHAR(500) | Path to receipt image |
+| status | VARCHAR(20) | pending, processing, completed, failed |
+| extracted_data | JSONB | OCR extracted data |
+| error_message | TEXT | Error message if failed |
+| attempts | INTEGER | Number of processing attempts |
+| created_at | TIMESTAMPTZ | Creation timestamp |
+| processed_at | TIMESTAMPTZ | Processing completion timestamp |
 
 ## Business Rules
 
@@ -173,13 +188,36 @@ Open-source accounting software built with Python, Flask, and PostgreSQL. Design
 - `/account-categories` - Manage account categories
 - `/login` - User login
 - `/logout` - User logout
+- `/api-key` - API key management (requires login)
+- `/api-key/generate` - Generate new API key (POST, requires email verification)
+- `/resend-verification` - Resend verification email (POST)
+- `/verify/<token>` - Verify email with token
+- `/activity-logs` - View activity logs
 
 ## PWA Routes
 
 ### Endpoints
 - `/pwa` - PWA main page
-- `/pwa/capture` - Camera capture interface
+- `/pwa/capture` - Camera capture interface (photo-only upload, no required fields)
 - `/pwa/upload` - Process and upload receipt photo
+- `/pwa/login` - PWA login
+- `/pwa/logout` - PWA logout
+
+### OCR Queue System
+The PWA receipt upload creates an expense with placeholder values and queues the image for OCR processing. The OCR processor extracts:
+- vendor_name
+- expense_date
+- ex_gst_amount
+- gst_amount
+- gst_type
+- description
+
+#### OCR Queue Routes (for PWA users)
+- `/pwa/api-key` - View API key management page
+- `/pwa/api-key/generate` - Generate new API key (requires email verification)
+- `/pwa/resend-verification` - Resend verification email
+
+Note: Users must verify email before accessing API key generation.
 
 ## File Storage
 - Uploaded files stored in `uploads/` directory
@@ -205,6 +243,11 @@ app:
   upload_folder: "uploads"
   max_content_length: 10485760  # 10MB
 
+vision:
+  ollama_host: "http://192.168.4.41:11434"
+  model: "gemma4:31b"
+  timeout: 2100.0
+
 accounting:
   default_gst_type: 0.1
   financial_year_start_month: 7  # July
@@ -213,15 +256,34 @@ accounting:
   financial_year_end_day: 30
 ```
 
+### .env (untracked)
+```
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=py_pg_accounts
+DB_USER=postgres
+DB_PASSWORD=<password>
+TWELVE_DATA_API_KEY=<api_key>
+```
+
 ## Security Considerations
 
-1. API key authentication for agent access
+1. API key authentication for agent access (requires email verification)
 2. Password hashing with bcrypt
 3. No credentials hardcoded - use environment variables and config files
 4. Input validation on all endpoints
 5. SQL injection prevention via parameterized queries (SQLAlchemy ORM)
 6. CSRF protection on forms
 7. File upload validation (type, size)
+8. Email verification required before API key generation
+
+## Email Verification Flow
+
+1. User registers → verification_token generated and stored
+2. User visits `/verify/<token>` → email_verified set to TRUE, token cleared
+3. User can generate API key only after email verification
+4. User can resend verification from `/api-key` page if not verified
+5. Login to HMI does NOT require email verification
 
 ## Technology Stack
 
@@ -243,6 +305,7 @@ py_pg_accounts/
 ├── .gitignore
 ├── config.yaml             # Application config (untracked)
 ├── config.yaml.example     # Template for config (tracked)
+├── AGENTS.md               # Agent documentation
 ├── app/
 │   ├── __init__.py
 │   ├── api/                # API server
@@ -254,6 +317,10 @@ py_pg_accounts/
 │   │   ├── __init__.py
 │   │   ├── routes.py
 │   │   └── templates/
+│   │       ├── base.html
+│   │       ├── dashboard.html
+│   │       ├── api_key.html
+│   │       └── pwa/
 │   ├── pwa/                # PWA
 │   │   ├── __init__.py
 │   │   └── routes.py
@@ -263,15 +330,19 @@ py_pg_accounts/
 │   │   ├── expense.py
 │   │   ├── invoice.py
 │   │   ├── account_category.py
-│   │   └── activity_log.py
+│   │   ├── activity_log.py
+│   │   └── ocr_queue.py
 │   └── shared/            # Shared utilities
 │       ├── __init__.py
 │       ├── decorators.py
 │       └── validators.py
+├── processes/              # Background workers
+│   └── ocr_processor.py    # OCR queue processor
 ├── skills/                 # Agent skills
 │   └── accounting_skill.py
 ├── systemd/                # Systemd service files (tracked)
-│   └── py_pg_accounts.service
+│   ├── py_pg_accounts.service
+│   └── py_pg_ocr_processor.service
 ├── schema/                 # PostgreSQL schema files (tracked)
 │   └── init.sql
 ├── venv/                   # Python virtual environment (untracked)
@@ -284,21 +355,22 @@ py_pg_accounts/
 └── run.py                  # Application entry point
 ```
 
-## Systemd Service
+## Systemd Services
 
-The application runs as a systemd user service using the project `venv`.
+The application runs as systemd user services using the project `venv`.
 
-### Service File: `systemd/py_pg_accounts.service`
+### Main Application Service: `systemd/py_pg_accounts.service`
 ```
 [Unit]
 Description=Python PostgreSQL Accounting System
-After=postgresql.service
-Wants=postgresql.service
+After=postgresql.service network-online.target
+Wants=postgresql.service network-online.target
 
 [Service]
 Type=simple
 Environment="PATH=%h/py_pg_accounts/venv/bin:/usr/local/bin:/usr/bin:/bin"
 WorkingDirectory=%h/py_pg_accounts
+ExecStartPre=/bin/sleep 5
 ExecStart=%h/py_pg_accounts/venv/bin/python3 run.py --host 192.168.4.44
 Restart=on-failure
 RestartSec=5
@@ -309,9 +381,41 @@ StandardError=journal
 WantedBy=default.target
 ```
 
-To install: `systemctl --user enable py_pg_accounts.service`
-To start: `systemctl --user start py_pg_accounts.service`
-To view logs: `journalctl --user -u py_pg_accounts.service`
+### OCR Processor Service: `systemd/py_pg_ocr_processor.service`
+```
+[Unit]
+Description=OCR Queue Processor for Receipt Scanning
+After=postgresql.service network-online.target
+Wants=postgresql.service network-online.target
+
+[Service]
+Type=simple
+Environment="PATH=%h/py_pg_accounts/venv/bin:/usr/local/bin:/usr/bin:/bin"
+WorkingDirectory=%h/py_pg_accounts
+ExecStart=%h/py_pg_accounts/venv/bin/python3 %h/py_pg_accounts/processes/ocr_processor.py --config %h/py_pg_accounts/config.yaml --poll-interval 5
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
+```
+
+To install and manage services:
+```bash
+# Main app
+systemctl --user enable py_pg_accounts.service
+systemctl --user start py_pg_accounts.service
+systemctl --user status py_pg_accounts.service
+journalctl --user -u py_pg_accounts.service
+
+# OCR processor
+systemctl --user enable py_pg_ocr_processor.service
+systemctl --user start py_pg_ocr_processor.service
+systemctl --user status py_pg_ocr_processor.service
+journalctl --user -u py_pg_ocr_processor.service
+```
 
 ## PostgreSQL Schema
 
