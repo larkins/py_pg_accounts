@@ -319,6 +319,7 @@ def new_expense():
 
         expense = Expense(
             user_id=user_id,
+            source='browser',
             vendor_name=vendor_name,
             description=description,
             currency=currency,

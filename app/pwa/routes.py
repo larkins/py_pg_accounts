@@ -3,9 +3,7 @@ from datetime import date
 from decimal import Decimal
 import os
 import uuid
-import base64
 from PIL import Image
-from io import BytesIO
 
 from app.models import db
 from app.models.user import User
@@ -75,18 +73,18 @@ def capture():
 def upload():
     user_id = session['pwa_user_id']
 
-    image_data = request.form.get('image_data')
-
-    if not image_data:
+    if 'file' not in request.files:
         flash('No image captured', 'error')
         return redirect(url_for('pwa.capture'))
 
-    try:
-        if ',' in image_data:
-            image_data = image_data.split(',')[1]
-        image_bytes = base64.b64decode(image_data)
+    file = request.files['file']
 
-        image = Image.open(BytesIO(image_bytes))
+    if not file or file.filename == '':
+        flash('No image selected', 'error')
+        return redirect(url_for('pwa.capture'))
+
+    try:
+        image = Image.open(file)
         if image.mode in ('RGBA', 'P'):
             image = image.convert('RGB')
 
@@ -99,6 +97,7 @@ def upload():
 
         expense = Expense(
             user_id=user_id,
+            source='pwa',
             vendor_name='Pending OCR',
             description='',
             ex_gst_amount=Decimal('0'),

@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS expenses (
     id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v4()::text,
     user_id VARCHAR(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     account_category_id VARCHAR(36) REFERENCES account_categories(id) ON DELETE SET NULL,
+    source VARCHAR(20) NOT NULL DEFAULT 'browser',
     vendor_name VARCHAR(255) NOT NULL,
     description TEXT,
     currency VARCHAR(3) NOT NULL DEFAULT 'AUD',

@@ -10,6 +10,7 @@ class Expense(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id = db.Column(db.String(36), db.ForeignKey('users.id'), nullable=False, index=True)
     account_category_id = db.Column(db.String(36), db.ForeignKey('account_categories.id'), nullable=True)
+    source = db.Column(db.String(20), nullable=False, default='browser', index=True)
     vendor_name = db.Column(db.String(255), nullable=False)
     description = db.Column(db.Text, nullable=True)
     currency = db.Column(db.String(3), nullable=False, default='AUD')
@@ -40,6 +41,7 @@ class Expense(db.Model):
             'user_id': self.user_id,
             'account_category_id': self.account_category_id,
             'account_category_name': self.account_category.name if self.account_category else None,
+            'source': self.source,
             'vendor_name': self.vendor_name,
             'description': self.description,
             'currency': self.currency,

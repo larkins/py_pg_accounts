@@ -248,6 +248,7 @@ def create_expense():
 
     expense = Expense(
         user_id=user.id,
+        source='api',
         vendor_name=vendor_name,
         description=data.get('description', ''),
         currency=currency,
