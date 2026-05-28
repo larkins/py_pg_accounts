@@ -71,6 +71,11 @@
             <input type="file" id="attachment" name="attachment" accept=".pdf,.png,.jpg,.jpeg">
             {% if expense and expense.attachment_path %}
             <p style="margin-top: 0.5rem; font-size: 0.875rem;">Current: {{ expense.attachment_path }}</p>
+            {% if expense.attachment_path.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')) %}
+            <div style="margin-top: 1rem;">
+                <img src="{{ url_for('serve_upload', filename=expense.attachment_path.replace('uploads/', '')) }}" alt="Receipt" style="max-width: 100%; max-height: 400px; border-radius: 8px; border: 1px solid #ddd;">
+            </div>
+            {% endif %}
             {% endif %}
         </div>
 

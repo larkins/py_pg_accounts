@@ -180,6 +180,7 @@ def expenses():
 
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
+    requires_review = request.args.get('requires_review')
 
     query = Expense.query.filter_by(user_id=user_id)
 
@@ -196,6 +197,9 @@ def expenses():
             query = query.filter(Expense.expense_date <= end)
         except ValueError:
             pass
+
+    if requires_review == '1':
+        query = query.filter(Expense.requires_review == True)
 
     expenses = query.order_by(Expense.expense_date.desc()).all()
     return render_template('expenses.html', expenses=expenses)

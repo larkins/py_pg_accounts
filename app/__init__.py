@@ -63,4 +63,10 @@ def create_app(config_path=None):
         from datetime import datetime, timezone
         return {'status': 'ok', 'timestamp': datetime.now(timezone.utc).isoformat()}
 
+    @app.route('/uploads/<path:filename>')
+    def serve_upload(filename):
+        from flask import send_from_directory
+        upload_folder = app.config.get('UPLOAD_FOLDER', 'uploads')
+        return send_from_directory(os.path.abspath(upload_folder), filename)
+
     return app

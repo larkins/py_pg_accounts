@@ -17,6 +17,11 @@
         </div>
         <button type="submit" class="btn btn-secondary">Filter</button>
         <a href="{{ url_for('hmi.expenses') }}" class="btn btn-secondary">Clear</a>
+        {% if request.args.get('requires_review') == '1' %}
+        <span style="color: red; font-weight: bold;">Showing: Requires Review Only</span>
+        {% else %}
+        <a href="{{ url_for('hmi.expenses', requires_review='1') }}" class="btn btn-secondary">Show Requires Review</a>
+        {% endif %}
     </form>
 
     <p><a href="{{ url_for('hmi.new_expense') }}" class="btn btn-primary">New Expense</a></p>
@@ -36,9 +41,12 @@
         </thead>
         <tbody>
             {% for expense in expenses %}
-            <tr>
+            <tr style="{% if expense.requires_review %}background-color: #fff3cd;{% endif %}">
                 <td>{{ expense.expense_date.strftime('%Y-%m-%d') }}</td>
-                <td>{{ expense.vendor_name }}</td>
+                <td>
+                    {{ expense.vendor_name }}
+                    {% if expense.requires_review %}<span style="color: red;"> [REVIEW]</span>{% endif %}
+                </td>
                 <td>{{ expense.account_category.name if expense.account_category else '-' }}</td>
                 <td>${{ "%.2f"|format(expense.ex_gst_amount) }}</td>
                 <td>${{ "%.2f"|format(expense.gst_amount) }}</td>
