@@ -453,6 +453,7 @@ def edit_expense(expense_id):
             expense.account_category_id = account_category_id if account_category_id else None
             expense.gst_amount = (expense.ex_gst_amount * expense.gst_type).quantize(Decimal('0.01'))
             expense.total_amount = expense.ex_gst_amount + expense.gst_amount
+            expense.requires_review = False
 
             if attachment and attachment.filename:
                 filename = secure_filename(attachment.filename)
