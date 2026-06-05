@@ -42,6 +42,12 @@ Open-source accounting software built with Python, Flask, and PostgreSQL. Design
 | api_key | VARCHAR(64) | Unique API key for agent access |
 | email_verified | BOOLEAN | Email verification status (default: FALSE) |
 | verification_token | VARCHAR(64) | Token for email verification |
+| business_name | VARCHAR(255) | Business name (appears on PDF invoices) |
+| abn | VARCHAR(20) | Australian Business Number (appears on PDF) |
+| address | TEXT | Business address (appears on PDF) |
+| contact_email | VARCHAR(255) | Business contact email (appears on PDF) |
+| contact_number | VARCHAR(50) | Business contact phone (appears on PDF) |
+| logo_path | VARCHAR(500) | Path to uploaded business logo (top-left on PDF) |
 | created_at | TIMESTAMPTZ | Creation timestamp |
 | updated_at | TIMESTAMPTZ | Last update timestamp |
 
@@ -76,7 +82,8 @@ Open-source accounting software built with Python, Flask, and PostgreSQL. Design
 | id | UUID | Primary key |
 | user_id | UUID | Foreign key to users |
 | account_category_id | UUID | Foreign key to account_categories |
-| client_name | VARCHAR(255) | Client name |
+| customer_id | UUID | Foreign key to customers (required) |
+| client_name | VARCHAR(255) | Client name (for display) |
 | description | TEXT | Invoice description |
 | ex_gst_amount | NUMERIC(12,2) | Amount excluding GST |
 | gst_amount | NUMERIC(12,2) | GST amount |
@@ -85,6 +92,20 @@ Open-source accounting software built with Python, Flask, and PostgreSQL. Design
 | invoice_date | DATE | Invoice date |
 | due_date | DATE | Payment due date |
 | attachment_path | VARCHAR(500) | Path to uploaded file |
+| created_at | TIMESTAMPTZ | Creation timestamp |
+| updated_at | TIMESTAMPTZ | Last update timestamp |
+
+#### customers
+| Column | Type | Description |
+|--------|------|-------------|
+| id | UUID | Primary key |
+| name | VARCHAR(255) | Customer name (required) |
+| contact_name | VARCHAR(255) | Contact person name |
+| address | TEXT | Customer address |
+| contact_email | VARCHAR(255) | Contact email address |
+| abn | VARCHAR(20) | Australian Business Number |
+| contact_number | VARCHAR(50) | Phone/contact number |
+| gst | BOOLEAN | Whether customer is GST registered (default: TRUE) |
 | created_at | TIMESTAMPTZ | Creation timestamp |
 | updated_at | TIMESTAMPTZ | Last update timestamp |
 
@@ -139,6 +160,10 @@ Open-source accounting software built with Python, Flask, and PostgreSQL. Design
 - `POST /api/auth/register` - Register new user
 - `POST /api/auth/login` - Login (returns JWT or session)
 - `POST /api/auth/api-key` - Generate API key
+- `GET /api/auth/business` - Get business profile (user details)
+- `PUT /api/auth/business` - Update business profile (name, ABN, address, contact)
+- `POST /api/auth/logo` - Upload business logo
+- `DELETE /api/auth/logo` - Delete business logo
 
 ### Expenses
 - `GET /api/expenses` - List expenses (with date filters)
@@ -150,11 +175,19 @@ Open-source accounting software built with Python, Flask, and PostgreSQL. Design
 
 ### Invoices
 - `GET /api/invoices` - List invoices (with date filters)
-- `POST /api/invoices` - Create invoice
+- `POST /api/invoices` - Create invoice (requires customer_id)
 - `GET /api/invoices/<id>` - Get single invoice
 - `PUT /api/invoices/<id>` - Update invoice
 - `DELETE /api/invoices/<id>` - Delete invoice
 - `POST /api/invoices/<id>/upload` - Upload attachment
+- `GET /api/invoices/<id>/pdf` - Generate and download PDF of invoice
+
+### Customers
+- `GET /api/customers` - List customers
+- `GET /api/customers/<id>` - Get single customer
+- `POST /api/customers` - Create customer (name required)
+- `PUT /api/customers/<id>` - Update customer
+- `DELETE /api/customers/<id>` - Delete customer (fails if invoices exist)
 
 ### Account Categories
 - `GET /api/account-categories` - List categories
@@ -329,6 +362,7 @@ py_pg_accounts/
 │   │   ├── user.py
 │   │   ├── expense.py
 │   │   ├── invoice.py
+│   │   ├── customer.py
 │   │   ├── account_category.py
 │   │   ├── activity_log.py
 │   │   └── ocr_queue.py

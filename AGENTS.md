@@ -61,6 +61,12 @@ headers = {"X-API-Key": "user_api_key_here"}
 | api_key | VARCHAR(64) | For API access |
 | email_verified | BOOLEAN | Must be TRUE before API key generation |
 | verification_token | VARCHAR(64) | For email verification |
+| business_name | VARCHAR(255) | Shown on PDF invoices |
+| abn | VARCHAR(20) | Australian Business Number, shown on PDF |
+| address | TEXT | Business address, shown on PDF |
+| contact_email | VARCHAR(255) | Shown on PDF |
+| contact_number | VARCHAR(50) | Shown on PDF |
+| logo_path | VARCHAR(500) | Path to logo, top-left on PDF |
 
 ### expenses
 | Column | Type | Notes |
@@ -74,6 +80,35 @@ headers = {"X-API-Key": "user_api_key_here"}
 | total_amount | NUMERIC(12,2) | Including GST |
 | expense_date | DATE | Date of expense |
 | attachment_path | VARCHAR(500) | Path to receipt image |
+| requires_review | BOOLEAN | TRUE if OCR failed - needs manual review |
+| source | VARCHAR(20) | 'api', 'browser', or 'pwa' |
+
+### invoices
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID | Primary key |
+| user_id | UUID | Foreign key |
+| customer_id | UUID | Foreign key to customers (REQUIRED) |
+| client_name | VARCHAR(255) | Client name for display |
+| ex_gst_amount | NUMERIC(12,2) | Before GST |
+| gst_amount | NUMERIC(12,2) | GST amount |
+| gst_type | NUMERIC(3,1) | 0 or 0.1 |
+| total_amount | NUMERIC(12,2) | Including GST |
+| invoice_date | DATE | Invoice date |
+| due_date | DATE | Due date |
+| attachment_path | VARCHAR(500) | Path to attachment |
+
+### customers
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID | Primary key |
+| name | VARCHAR(255) | Required |
+| contact_name | VARCHAR(255) | Contact person name |
+| address | TEXT | Postal address |
+| contact_email | VARCHAR(255) | Email |
+| abn | VARCHAR(20) | Australian Business Number |
+| contact_number | VARCHAR(50) | Phone |
+| gst | BOOLEAN | GST registered (default TRUE) |
 
 ### ocr_queue
 | Column | Type | Notes |
@@ -140,6 +175,63 @@ curl "http://192.168.4.44:5061/api/reports/quarterly-bas?quarter=1&year=2024" \
   -H "X-API-Key: your_api_key"
 ```
 
+### Create a Customer
+```bash
+curl -X POST http://192.168.4.44:5061/api/customers \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your_api_key" \
+  -d '{
+    "name": "Acme Corp",
+    "address": "123 Main St, Sydney NSW 2000",
+    "contact_email": "billing@acme.com",
+    "abn": "12345678901",
+    "contact_number": "+61 2 1234 5678",
+    "gst": true
+  }'
+```
+
+### Create an Invoice (requires customer_id)
+```bash
+curl -X POST http://192.168.4.44:5061/api/invoices \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your_api_key" \
+  -d '{
+    "customer_id": "customer-uuid-here",
+    "client_name": "Acme Corp",
+    "ex_gst_amount": 1000.00,
+    "gst_type": 0.1,
+    "invoice_date": "2024-03-15",
+    "due_date": "2024-04-15"
+  }'
+```
+
+### Download Invoice PDF
+```bash
+curl -o invoice.pdf "http://192.168.4.44:5061/api/invoices/<invoice-id>/pdf" \
+  -H "X-API-Key: your_api_key"
+```
+
+### Update Business Profile
+```bash
+curl -X PUT http://192.168.4.44:5061/api/auth/business \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your_api_key" \
+  -d '{
+    "business_name": "Acme Pty Ltd",
+    "abn": "12345678901",
+    "address": "123 Main St\nSydney NSW 2000",
+    "contact_email": "billing@acme.com",
+    "contact_number": "+61 2 1234 5678"
+  }'
+```
+
+### Upload Business Logo
+```bash
+curl -X POST http://192.168.4.44:5061/api/auth/logo \
+  -H "X-API-Key: your_api_key" \
+  -F "file=@/path/to/logo.png"
+```
+
 ## Project Structure
 
 ```
@@ -153,6 +245,7 @@ py_pg_accounts/
 │       ├── user.py
 │       ├── expense.py
 │       ├── invoice.py
+│       ├── customer.py
 │       ├── ocr_queue.py
 │       └── activity_log.py
 ├── processes/

@@ -3,7 +3,7 @@ Accounting Skill for AI Agents
 
 This skill provides a structured interface for AI agents to interact with the
 accounting database. It wraps the REST API to provide natural language access
-to expense and invoice management.
+to expense, invoice, customer, and business profile management.
 
 Usage:
     from skills.accounting_skill import AccountingSkill
@@ -11,6 +11,7 @@ Usage:
     result = skill.create_expense(vendor_name="Office Supplies", ex_gst_amount=100.00)
 """
 
+import os
 import requests
 from typing import Optional, List, Dict, Any
 from datetime import date, datetime
@@ -29,7 +30,7 @@ class AccountingSkill:
             'Content-Type': 'application/json'
         }
 
-    def _make_request(self, method: str, endpoint: str, data: Optional[Dict] = None, files: Optional[Dict] = None):
+    def _make_request(self, method: str, endpoint: str, data: Optional[Dict] = None, files: Optional[Dict] = None, stream: bool = False):
         url = f"{self.BASE_URL}{endpoint}"
 
         if files:
@@ -39,7 +40,111 @@ class AccountingSkill:
             response = requests.request(method, url, headers=self.headers, json=data)
 
         response.raise_for_status()
+
+        if stream:
+            return response
         return response.json()
+
+    def download_file(self, endpoint: str, save_path: str) -> str:
+        """
+        Download a file from the API.
+
+        Args:
+            endpoint: API endpoint that returns a file
+            save_path: Local path to save the file
+
+        Returns:
+            Path to the saved file
+        """
+        url = f"{self.BASE_URL}{endpoint}"
+        headers = {'X-API-Key': self.api_key}
+        response = requests.get(url, headers=headers, stream=True)
+        response.raise_for_status()
+
+        os.makedirs(os.path.dirname(save_path) if os.path.dirname(save_path) else '.', exist_ok=True)
+        with open(save_path, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+
+        return save_path
+
+    # =========================================================================
+    # Business Profile Management
+    # =========================================================================
+
+    def get_business_details(self) -> Dict[str, Any]:
+        """
+        Get the current business profile (user details).
+
+        Returns:
+            Dictionary containing the user/business profile
+        """
+        result = self._make_request('GET', '/api/auth/business')
+        return result['user']
+
+    def update_business_details(
+        self,
+        business_name: Optional[str] = None,
+        abn: Optional[str] = None,
+        address: Optional[str] = None,
+        contact_email: Optional[str] = None,
+        contact_number: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Update business profile details. These appear on invoice PDFs.
+
+        Args:
+            business_name: Business name
+            abn: Australian Business Number
+            address: Business address (can include newlines)
+            contact_email: Business contact email
+            contact_number: Business contact phone number
+
+        Returns:
+            Dictionary containing the updated user/business profile
+        """
+        data = {}
+        if business_name is not None:
+            data['business_name'] = business_name
+        if abn is not None:
+            data['abn'] = abn
+        if address is not None:
+            data['address'] = address
+        if contact_email is not None:
+            data['contact_email'] = contact_email
+        if contact_number is not None:
+            data['contact_number'] = contact_number
+
+        result = self._make_request('PUT', '/api/auth/business', data)
+        return result['user']
+
+    def upload_logo(self, file_path: str) -> Dict[str, Any]:
+        """
+        Upload a business logo. The logo appears on the top-left of invoice PDFs.
+
+        Args:
+            file_path: Local path to the logo file (PNG, JPG, JPEG, GIF, WEBP, SVG)
+
+        Returns:
+            Dictionary containing the updated user profile with logo path
+        """
+        with open(file_path, 'rb') as f:
+            files = {'file': f}
+            result = self._make_request('POST', '/api/auth/logo', files=files)
+        return result['user']
+
+    def delete_logo(self) -> Dict[str, Any]:
+        """
+        Delete the business logo.
+
+        Returns:
+            Dictionary with confirmation message
+        """
+        return self._make_request('DELETE', '/api/auth/logo')
+
+    # =========================================================================
+    # Expense Management
+    # =========================================================================
 
     def create_expense(
         self,
@@ -140,8 +245,7 @@ class AccountingSkill:
 
     def delete_expense(self, expense_id: str) -> Dict[str, Any]:
         """Delete an expense by ID."""
-        result = self._make_request('DELETE', f'/api/expenses/{expense_id}')
-        return result
+        return self._make_request('DELETE', f'/api/expenses/{expense_id}')
 
     def upload_expense_attachment(self, expense_id: str, file_path: str) -> Dict[str, Any]:
         """
@@ -159,8 +263,96 @@ class AccountingSkill:
             result = self._make_request('POST', f'/api/expenses/{expense_id}/upload', files=files)
         return result['expense']
 
+    # =========================================================================
+    # Customer Management
+    # =========================================================================
+
+    def create_customer(
+        self,
+        name: str,
+        contact_name: Optional[str] = None,
+        address: Optional[str] = None,
+        contact_email: Optional[str] = None,
+        abn: Optional[str] = None,
+        contact_number: Optional[str] = None,
+        gst: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Create a new customer.
+
+        Args:
+            name: Customer/business name (required)
+            contact_name: Contact person name
+            address: Customer address
+            contact_email: Contact email
+            abn: Australian Business Number
+            contact_number: Phone number
+            gst: Whether customer is GST registered (default True)
+
+        Returns:
+            Dictionary containing the created customer
+        """
+        data = {
+            'name': name,
+            'gst': gst
+        }
+        if contact_name is not None:
+            data['contact_name'] = contact_name
+        if address is not None:
+            data['address'] = address
+        if contact_email is not None:
+            data['contact_email'] = contact_email
+        if abn is not None:
+            data['abn'] = abn
+        if contact_number is not None:
+            data['contact_number'] = contact_number
+
+        result = self._make_request('POST', '/api/customers', data)
+        return result['customer']
+
+    def get_customer(self, customer_id: str) -> Dict[str, Any]:
+        """Get a single customer by ID."""
+        result = self._make_request('GET', f'/api/customers/{customer_id}')
+        return result['customer']
+
+    def list_customers(self) -> List[Dict[str, Any]]:
+        """List all customers, sorted by name."""
+        result = self._make_request('GET', '/api/customers')
+        return result['customers']
+
+    def update_customer(self, customer_id: str, **kwargs) -> Dict[str, Any]:
+        """
+        Update an existing customer.
+
+        Args:
+            customer_id: UUID of the customer
+            **kwargs: Customer fields to update (name, contact_name, address, etc.)
+
+        Returns:
+            Dictionary containing the updated customer
+        """
+        result = self._make_request('PUT', f'/api/customers/{customer_id}', kwargs)
+        return result['customer']
+
+    def delete_customer(self, customer_id: str) -> Dict[str, Any]:
+        """
+        Delete a customer. Fails if the customer has any invoices.
+
+        Args:
+            customer_id: UUID of the customer
+
+        Returns:
+            Dictionary with confirmation message
+        """
+        return self._make_request('DELETE', f'/api/customers/{customer_id}')
+
+    # =========================================================================
+    # Invoice Management (requires customer_id)
+    # =========================================================================
+
     def create_invoice(
         self,
+        customer_id: str,
         client_name: str,
         ex_gst_amount: float,
         invoice_date: str,
@@ -170,10 +362,11 @@ class AccountingSkill:
         account_category_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Create a new invoice record.
+        Create a new invoice. Requires an existing customer_id.
 
         Args:
-            client_name: Name of the client/customer
+            customer_id: UUID of the customer (REQUIRED)
+            client_name: Display name for the client on the invoice
             ex_gst_amount: Amount excluding GST
             invoice_date: Date of invoice in YYYY-MM-DD format
             gst_type: GST type (0 for no GST, 0.1 for 10% GST)
@@ -185,6 +378,7 @@ class AccountingSkill:
             Dictionary containing the created invoice data
         """
         data = {
+            'customer_id': customer_id,
             'client_name': client_name,
             'ex_gst_amount': str(ex_gst_amount),
             'invoice_date': invoice_date,
@@ -239,14 +433,14 @@ class AccountingSkill:
 
         Args:
             invoice_id: UUID of the invoice to update
-            **kwargs: Any invoice fields to update
+            **kwargs: Any invoice fields to update (customer_id, client_name, ex_gst_amount, etc.)
 
         Returns:
             Dictionary containing the updated invoice data
         """
         data = {}
         for key, value in kwargs.items():
-            if key in ['client_name', 'description', 'invoice_date', 'due_date', 'account_category_id']:
+            if key in ['customer_id', 'client_name', 'description', 'invoice_date', 'due_date', 'account_category_id']:
                 data[key] = value
             elif key in ['ex_gst_amount', 'gst_type']:
                 data[key] = str(value)
@@ -256,8 +450,7 @@ class AccountingSkill:
 
     def delete_invoice(self, invoice_id: str) -> Dict[str, Any]:
         """Delete an invoice by ID."""
-        result = self._make_request('DELETE', f'/api/invoices/{invoice_id}')
-        return result
+        return self._make_request('DELETE', f'/api/invoices/{invoice_id}')
 
     def upload_invoice_attachment(self, invoice_id: str, file_path: str) -> Dict[str, Any]:
         """
@@ -274,6 +467,30 @@ class AccountingSkill:
             files = {'file': f}
             result = self._make_request('POST', f'/api/invoices/{invoice_id}/upload', files=files)
         return result['invoice']
+
+    def download_invoice_pdf(self, invoice_id: str, save_path: str) -> str:
+        """
+        Download a generated PDF of an invoice.
+
+        The PDF includes:
+        - The user's business logo (top-left, if uploaded)
+        - The user's business details (top-right)
+        - Customer information (Bill To)
+        - Invoice details, line items, totals
+        - Payment terms footer
+
+        Args:
+            invoice_id: UUID of the invoice
+            save_path: Local path to save the PDF (e.g. './invoice.pdf')
+
+        Returns:
+            Path to the saved PDF file
+        """
+        return self.download_file(f'/api/invoices/{invoice_id}/pdf', save_path)
+
+    # =========================================================================
+    # Account Categories
+    # =========================================================================
 
     def create_account_category(
         self,
@@ -302,10 +519,27 @@ class AccountingSkill:
         result = self._make_request('GET', '/api/account-categories')
         return result['account_categories']
 
+    def update_account_category(self, category_id: str, **kwargs) -> Dict[str, Any]:
+        """
+        Update an existing account category.
+
+        Args:
+            category_id: UUID of the category
+            **kwargs: Category fields to update (name, description)
+
+        Returns:
+            Dictionary containing the updated category
+        """
+        result = self._make_request('PUT', f'/api/account-categories/{category_id}', kwargs)
+        return result['account_category']
+
     def delete_account_category(self, category_id: str) -> Dict[str, Any]:
         """Delete an account category by ID."""
-        result = self._make_request('DELETE', f'/api/account-categories/{category_id}')
-        return result
+        return self._make_request('DELETE', f'/api/account-categories/{category_id}')
+
+    # =========================================================================
+    # Reports
+    # =========================================================================
 
     def get_profit_loss_report(
         self,
@@ -323,8 +557,7 @@ class AccountingSkill:
             Dictionary containing P&L data with income, expenses, GST, and category breakdown
         """
         params = f'start_date={start_date}&end_date={end_date}'
-        result = self._make_request('GET', f'/api/reports/profit-loss?{params}')
-        return result
+        return self._make_request('GET', f'/api/reports/profit-loss?{params}')
 
     def get_quarterly_bas_report(
         self,
@@ -351,8 +584,7 @@ class AccountingSkill:
             params.append(f'quarter={quarter}')
 
         query = '?' + '&'.join(params) if params else ''
-        result = self._make_request('GET', f'/api/reports/quarterly-bas{query}')
-        return result
+        return self._make_request('GET', f'/api/reports/quarterly-bas{query}')
 
     def get_monthly_report(
         self,
@@ -376,8 +608,7 @@ class AccountingSkill:
             params.append(f'month={month}')
 
         query = '?' + '&'.join(params) if params else ''
-        result = self._make_request('GET', f'/api/reports/monthly{query}')
-        return result
+        return self._make_request('GET', f'/api/reports/monthly{query}')
 
     def get_yearly_finances_report(self, year: Optional[int] = None) -> Dict[str, Any]:
         """
@@ -393,8 +624,7 @@ class AccountingSkill:
             Dictionary containing yearly totals and quarterly breakdowns
         """
         query = f'?year={year}' if year else ''
-        result = self._make_request('GET', f'/api/reports/yearly-finances{query}')
-        return result
+        return self._make_request('GET', f'/api/reports/yearly-finances{query}')
 
 
 def register_user(email: str, password: str, country: str = "AU") -> Dict[str, Any]:
@@ -416,22 +646,5 @@ def register_user(email: str, password: str, country: str = "AU") -> Dict[str, A
         'country': country
     }
     response = requests.post(url, json=data)
-    response.raise_for_status()
-    return response.json()
-
-
-def generate_api_key(api_key: str) -> Dict[str, Any]:
-    """
-    Generate an API key for a user (requires existing API key).
-
-    Args:
-        api_key: Existing API key for authentication
-
-    Returns:
-        Dictionary containing the new API key
-    """
-    url = f"{AccountingSkill.BASE_URL}/api/auth/api-key"
-    headers = {'X-API-Key': api_key}
-    response = requests.post(url, headers=headers)
     response.raise_for_status()
     return response.json()

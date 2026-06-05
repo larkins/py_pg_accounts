@@ -10,6 +10,7 @@ class Invoice(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id = db.Column(db.String(36), db.ForeignKey('users.id'), nullable=False, index=True)
     account_category_id = db.Column(db.String(36), db.ForeignKey('account_categories.id'), nullable=True)
+    customer_id = db.Column(db.String(36), db.ForeignKey('customers.id'), nullable=False, index=True)
     client_name = db.Column(db.String(255), nullable=False)
     description = db.Column(db.Text, nullable=True)
     ex_gst_amount = db.Column(db.Numeric(12, 2), nullable=False)
@@ -38,6 +39,8 @@ class Invoice(db.Model):
             'user_id': self.user_id,
             'account_category_id': self.account_category_id,
             'account_category_name': self.account_category.name if self.account_category else None,
+            'customer_id': self.customer_id,
+            'customer_name': self.customer.name if self.customer else None,
             'client_name': self.client_name,
             'description': self.description,
             'ex_gst_amount': str(self.ex_gst_amount),

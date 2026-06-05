@@ -13,6 +13,12 @@ CREATE TABLE IF NOT EXISTS users (
     api_key VARCHAR(64) UNIQUE,
     email_verified BOOLEAN NOT NULL DEFAULT FALSE,
     verification_token VARCHAR(64),
+    business_name VARCHAR(255),
+    abn VARCHAR(20),
+    address TEXT,
+    contact_email VARCHAR(255),
+    contact_number VARCHAR(50),
+    logo_path VARCHAR(500),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -61,6 +67,7 @@ CREATE TABLE IF NOT EXISTS invoices (
     id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v4()::text,
     user_id VARCHAR(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     account_category_id VARCHAR(36) REFERENCES account_categories(id) ON DELETE SET NULL,
+    customer_id VARCHAR(36) REFERENCES customers(id) ON DELETE RESTRICT,
     client_name VARCHAR(255) NOT NULL,
     description TEXT,
     ex_gst_amount NUMERIC(12, 2) NOT NULL,
@@ -77,6 +84,23 @@ CREATE TABLE IF NOT EXISTS invoices (
 CREATE INDEX IF NOT EXISTS idx_invoices_user_id ON invoices(user_id);
 CREATE INDEX IF NOT EXISTS idx_invoices_invoice_date ON invoices(invoice_date);
 CREATE INDEX IF NOT EXISTS idx_invoices_created_at ON invoices(created_at);
+CREATE INDEX IF NOT EXISTS idx_invoices_customer_id ON invoices(customer_id);
+
+-- Customers table
+CREATE TABLE IF NOT EXISTS customers (
+    id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v4()::text,
+    name VARCHAR(255) NOT NULL,
+    contact_name VARCHAR(255),
+    address TEXT,
+    contact_email VARCHAR(255),
+    abn VARCHAR(20),
+    contact_number VARCHAR(50),
+    gst BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_customers_name ON customers(name);
 
 -- Activity Logs table
 CREATE TABLE IF NOT EXISTS activity_logs (
