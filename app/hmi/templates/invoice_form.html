@@ -67,6 +67,9 @@
         <div class="actions">
             <button type="submit" class="btn btn-primary">{{ 'Update' if invoice else 'Create' }}</button>
             <a href="{{ url_for('hmi.invoices') }}" class="btn btn-secondary">Cancel</a>
+            {% if invoice %}
+            <a href="{{ url_for('hmi.download_invoice_pdf', invoice_id=invoice.id) }}" class="btn btn-primary">Download PDF</a>
+            {% endif %}
         </div>
     </form>
 </div>

@@ -46,6 +46,7 @@
                 <td>${{ "%.2f"|format(invoice.total_amount) }}</td>
                 <td>{{ invoice.due_date.strftime('%Y-%m-%d') if invoice.due_date else '-' }}</td>
                 <td class="actions">
+                    <a href="{{ url_for('hmi.download_invoice_pdf', invoice_id=invoice.id) }}" class="btn btn-primary btn-small" title="Download PDF">PDF</a>
                     <a href="{{ url_for('hmi.edit_invoice', invoice_id=invoice.id) }}" class="btn btn-secondary btn-small">Edit</a>
                     <form method="POST" action="{{ url_for('hmi.delete_invoice', invoice_id=invoice.id) }}" style="display: inline;">
                         <button type="submit" class="btn btn-danger btn-small" onclick="return confirm('Are you sure?')">Delete</button>

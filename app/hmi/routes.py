@@ -1,10 +1,11 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app, send_file
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash
 from datetime import date
 from decimal import Decimal
 import os
 import uuid
+import io
 
 from app.models import db
 from app.models.user import User
@@ -794,6 +795,30 @@ def delete_invoice(invoice_id):
 
     flash('Invoice deleted successfully', 'success')
     return redirect(url_for('hmi.invoices'))
+
+
+@hmi_bp.route('/invoices/<invoice_id>/pdf')
+@login_required
+def download_invoice_pdf(invoice_id):
+    user_id = session['user_id']
+    invoice = Invoice.query.filter_by(id=invoice_id, user_id=user_id).first()
+
+    if not invoice:
+        flash('Invoice not found', 'error')
+        return redirect(url_for('hmi.invoices'))
+
+    user = User.query.get(user_id)
+
+    from app.shared.pdf import generate_invoice_pdf
+    buffer = generate_invoice_pdf(user, invoice)
+
+    filename = f'invoice_{invoice.id[:8]}_{invoice.invoice_date}.pdf'
+    return send_file(
+        buffer,
+        mimetype='application/pdf',
+        as_attachment=True,
+        download_name=filename
+    )
 
 
 @hmi_bp.route('/reports')
