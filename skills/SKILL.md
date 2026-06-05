@@ -55,7 +55,11 @@ skill.update_business_details(
     abn="12345678901",
     address="123 Main St\nSydney NSW 2000",
     contact_email="billing@acme.com",
-    contact_number="+61 2 1234 5678"
+    contact_number="+61 2 1234 5678",
+    bank_name="Commonwealth Bank",
+    account_name="Acme Pty Ltd",
+    bsb="062-001",
+    account_number="12345678"
 )
 ```
 
@@ -182,7 +186,7 @@ invoice = skill.create_invoice(
 
 ### Download Invoice PDF
 
-Generates a professional PDF with the user's logo, business details, customer info, line items, and totals. Saves to local file:
+Generates a professional PDF with the user's logo, business details, bank details, customer info, line items, and totals. Saves to local file:
 
 ```python
 path = skill.download_invoice_pdf(
@@ -200,6 +204,7 @@ path = skill.download_invoice_pdf(
 - **Description**: Optional invoice description
 - **Line items table**: Itemized charges
 - **Totals**: Subtotal, GST, total
+- **Bank Details**: Bank name, account name, BSB, account number (when provided)
 - **Footer**: Payment terms (when ABN is registered)
 
 ### List Invoices with Date Filter
@@ -310,7 +315,11 @@ skill.update_business_details(
     abn="12345678901",
     address="123 Main St\nSydney NSW 2000",
     contact_email="accounts@mycompany.com",
-    contact_number="+61 2 1234 5678"
+    contact_number="+61 2 1234 5678",
+    bank_name="Commonwealth Bank",
+    account_name="My Company Pty Ltd",
+    bsb="062-001",
+    account_number="12345678"
 )
 
 # 2. Upload logo

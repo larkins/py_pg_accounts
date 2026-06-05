@@ -157,6 +157,20 @@ def generate_invoice_pdf(user, invoice):
             styles['Normal']
         ))
 
+    if user.bank_name or user.account_name or user.account_number or user.bsb:
+        elements.append(Spacer(1, 0.7*cm))
+        elements.append(Paragraph('<b>Bank Details:</b>', styles['Heading3']))
+        bank_details = []
+        if user.bank_name:
+            bank_details.append(f'Bank: {user.bank_name}')
+        if user.account_name:
+            bank_details.append(f'Account Name: {user.account_name}')
+        if user.bsb:
+            bank_details.append(f'BSB: {user.bsb}')
+        if user.account_number:
+            bank_details.append(f'Account Number: {user.account_number}')
+        elements.append(Paragraph('<br/>'.join(bank_details), styles['Normal']))
+
     doc.build(elements)
     buffer.seek(0)
     return buffer

@@ -88,7 +88,11 @@ class AccountingSkill:
         abn: Optional[str] = None,
         address: Optional[str] = None,
         contact_email: Optional[str] = None,
-        contact_number: Optional[str] = None
+        contact_number: Optional[str] = None,
+        bank_name: Optional[str] = None,
+        account_name: Optional[str] = None,
+        account_number: Optional[str] = None,
+        bsb: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Update business profile details. These appear on invoice PDFs.
@@ -99,6 +103,10 @@ class AccountingSkill:
             address: Business address (can include newlines)
             contact_email: Business contact email
             contact_number: Business contact phone number
+            bank_name: Bank name
+            account_name: Account holder name
+            account_number: Bank account number
+            bsb: Bank State Branch (BSB) number
 
         Returns:
             Dictionary containing the updated user/business profile
@@ -114,6 +122,14 @@ class AccountingSkill:
             data['contact_email'] = contact_email
         if contact_number is not None:
             data['contact_number'] = contact_number
+        if bank_name is not None:
+            data['bank_name'] = bank_name
+        if account_name is not None:
+            data['account_name'] = account_name
+        if account_number is not None:
+            data['account_number'] = account_number
+        if bsb is not None:
+            data['bsb'] = bsb
 
         result = self._make_request('PUT', '/api/auth/business', data)
         return result['user']

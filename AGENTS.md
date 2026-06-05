@@ -67,6 +67,10 @@ headers = {"X-API-Key": "user_api_key_here"}
 | contact_email | VARCHAR(255) | Shown on PDF |
 | contact_number | VARCHAR(50) | Shown on PDF |
 | logo_path | VARCHAR(500) | Path to logo, top-left on PDF |
+| bank_name | VARCHAR(255) | Bank name, shown on PDF |
+| account_name | VARCHAR(255) | Account holder name, shown on PDF |
+| account_number | VARCHAR(50) | Bank account number, shown on PDF |
+| bsb | VARCHAR(20) | Bank State Branch, shown on PDF |
 
 ### expenses
 | Column | Type | Notes |
@@ -221,7 +225,11 @@ curl -X PUT http://192.168.4.44:5061/api/auth/business \
     "abn": "12345678901",
     "address": "123 Main St\nSydney NSW 2000",
     "contact_email": "billing@acme.com",
-    "contact_number": "+61 2 1234 5678"
+    "contact_number": "+61 2 1234 5678",
+    "bank_name": "Commonwealth Bank",
+    "account_name": "Acme Pty Ltd",
+    "bsb": "062-001",
+    "account_number": "12345678"
   }'
 ```
 

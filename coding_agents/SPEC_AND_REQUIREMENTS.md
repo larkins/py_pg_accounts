@@ -48,6 +48,10 @@ Open-source accounting software built with Python, Flask, and PostgreSQL. Design
 | contact_email | VARCHAR(255) | Business contact email (appears on PDF) |
 | contact_number | VARCHAR(50) | Business contact phone (appears on PDF) |
 | logo_path | VARCHAR(500) | Path to uploaded business logo (top-left on PDF) |
+| bank_name | VARCHAR(255) | Bank name (shown on PDF for payment details) |
+| account_name | VARCHAR(255) | Account holder name (shown on PDF) |
+| account_number | VARCHAR(50) | Bank account number (shown on PDF) |
+| bsb | VARCHAR(20) | Bank State Branch number (shown on PDF) |
 | created_at | TIMESTAMPTZ | Creation timestamp |
 | updated_at | TIMESTAMPTZ | Last update timestamp |
 

@@ -890,6 +890,14 @@ def update_business_details():
         user.contact_email = data['contact_email']
     if 'contact_number' in data:
         user.contact_number = data['contact_number']
+    if 'bank_name' in data:
+        user.bank_name = data['bank_name']
+    if 'account_name' in data:
+        user.account_name = data['account_name']
+    if 'account_number' in data:
+        user.account_number = data['account_number']
+    if 'bsb' in data:
+        user.bsb = data['bsb']
 
     log_activity(
         user_id=user.id,

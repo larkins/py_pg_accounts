@@ -19,6 +19,10 @@ CREATE TABLE IF NOT EXISTS users (
     contact_email VARCHAR(255),
     contact_number VARCHAR(50),
     logo_path VARCHAR(500),
+    bank_name VARCHAR(255),
+    account_name VARCHAR(255),
+    account_number VARCHAR(50),
+    bsb VARCHAR(20),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

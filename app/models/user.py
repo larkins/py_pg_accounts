@@ -24,6 +24,10 @@ class User(UserMixin, db.Model):
     contact_email = db.Column(db.String(255), nullable=True)
     contact_number = db.Column(db.String(50), nullable=True)
     logo_path = db.Column(db.String(500), nullable=True)
+    bank_name = db.Column(db.String(255), nullable=True)
+    account_name = db.Column(db.String(255), nullable=True)
+    account_number = db.Column(db.String(50), nullable=True)
+    bsb = db.Column(db.String(20), nullable=True)
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=get_utc_now)
     updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=get_utc_now, onupdate=get_utc_now)
 
@@ -57,6 +61,10 @@ class User(UserMixin, db.Model):
             'contact_email': self.contact_email,
             'contact_number': self.contact_number,
             'logo_path': self.logo_path,
+            'bank_name': self.bank_name,
+            'account_name': self.account_name,
+            'account_number': self.account_number,
+            'bsb': self.bsb,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
