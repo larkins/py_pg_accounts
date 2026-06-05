@@ -72,6 +72,8 @@ def generate_invoice_pdf(user, invoice):
     invoice_title_row = Table([[title_cell, '']], colWidths=[12*cm, 4*cm])
     invoice_title_row.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
         ('LINEBELOW', (0, 0), (-1, -1), 1.5, colors.HexColor('#2c3e50')),
     ]))
     elements.append(invoice_title_row)
