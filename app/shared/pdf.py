@@ -40,8 +40,6 @@ def generate_invoice_pdf(user, invoice):
             pass
 
     business_paragraphs = []
-    if user.business_name:
-        business_paragraphs.append(f'<b>{user.business_name}</b>')
     if user.abn:
         business_paragraphs.append(f'ABN: {user.abn}')
     if user.address:
@@ -54,10 +52,18 @@ def generate_invoice_pdf(user, invoice):
     business_style = ParagraphStyle('Business', parent=styles['Normal'], fontSize=9, alignment=TA_RIGHT, leading=12)
     business_cell = [Paragraph('<br/>'.join(business_paragraphs), business_style)] if business_paragraphs else ['']
 
-    title_style = ParagraphStyle('Title', parent=styles['Heading1'], fontSize=28, spaceAfter=0, alignment=0, textColor=colors.HexColor('#2c3e50'))
-    title_cell = Paragraph('INVOICE', title_style)
+    business_name_style = ParagraphStyle(
+        'BusinessName', parent=styles['Heading2'],
+        fontSize=20, alignment=0, leading=24,
+        textColor=colors.HexColor('#2c3e50'),
+        spaceAfter=0, spaceBefore=0
+    )
+    business_name_cell = [Paragraph(user.business_name, business_name_style)] if user.business_name else ['']
 
-    header_data = [[logo_cell, business_cell]]
+    header_data = [
+        [logo_cell, business_cell],
+        [business_name_cell, '']
+    ]
     header_table = Table(header_data, colWidths=[8*cm, 8*cm])
     header_table.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
@@ -65,9 +71,16 @@ def generate_invoice_pdf(user, invoice):
         ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
         ('LEFTPADDING', (0, 0), (-1, -1), 0),
         ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+        ('TOPPADDING', (0, 0), (-1, -1), 0),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 4),
+        ('TOPPADDING', (0, 1), (0, 1), 6),
+        ('BOTTOMPADDING', (0, 1), (0, 1), 0),
     ]))
     elements.append(header_table)
     elements.append(Spacer(1, 0.3*cm))
+
+    title_style = ParagraphStyle('Title', parent=styles['Heading1'], fontSize=28, spaceAfter=0, alignment=0, textColor=colors.HexColor('#2c3e50'))
+    title_cell = Paragraph('INVOICE', title_style)
 
     invoice_title_row = Table([[title_cell, '']], colWidths=[12*cm, 4*cm])
     invoice_title_row.setStyle(TableStyle([
