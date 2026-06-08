@@ -92,7 +92,8 @@ class AccountingSkill:
         bank_name: Optional[str] = None,
         account_name: Optional[str] = None,
         account_number: Optional[str] = None,
-        bsb: Optional[str] = None
+        bsb: Optional[str] = None,
+        payment_terms: Optional[int] = None
     ) -> Dict[str, Any]:
         """
         Create or update business profile details. These appear on invoice PDFs.
@@ -111,6 +112,9 @@ class AccountingSkill:
             account_name: Account holder name
             account_number: Bank account number
             bsb: Bank State Branch (BSB) number
+            payment_terms: Number of days for payment (default 14). This is
+                used in the "Payment terms: Net X days" line on invoice PDFs
+                and should be consistent with the invoice due date.
 
         Returns:
             Dictionary containing the updated user/business profile
@@ -134,6 +138,8 @@ class AccountingSkill:
             data['account_number'] = account_number
         if bsb is not None:
             data['bsb'] = bsb
+        if payment_terms is not None:
+            data['payment_terms'] = payment_terms
 
         result = self._make_request('PUT', '/api/auth/business', data)
         return result['user']

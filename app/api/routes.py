@@ -898,6 +898,14 @@ def update_business_details():
         user.account_number = data['account_number']
     if 'bsb' in data:
         user.bsb = data['bsb']
+    if 'payment_terms' in data:
+        try:
+            payment_terms = int(data['payment_terms'])
+            if payment_terms < 0:
+                return jsonify({'error': 'payment_terms must be a positive integer'}), 400
+            user.payment_terms = payment_terms
+        except (ValueError, TypeError):
+            return jsonify({'error': 'payment_terms must be an integer'}), 400
 
     log_activity(
         user_id=user.id,

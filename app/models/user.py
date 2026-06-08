@@ -28,6 +28,7 @@ class User(UserMixin, db.Model):
     account_name = db.Column(db.String(255), nullable=True)
     account_number = db.Column(db.String(50), nullable=True)
     bsb = db.Column(db.String(20), nullable=True)
+    payment_terms = db.Column(db.Integer, nullable=False, default=14)
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=get_utc_now)
     updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=get_utc_now, onupdate=get_utc_now)
 
@@ -65,6 +66,7 @@ class User(UserMixin, db.Model):
             'account_name': self.account_name,
             'account_number': self.account_number,
             'bsb': self.bsb,
+            'payment_terms': self.payment_terms,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }

@@ -71,6 +71,7 @@ headers = {"X-API-Key": "user_api_key_here"}
 | account_name | VARCHAR(255) | Account holder name, shown on PDF |
 | account_number | VARCHAR(50) | Bank account number, shown on PDF |
 | bsb | VARCHAR(20) | Bank State Branch, shown on PDF |
+| payment_terms | INTEGER | Default payment terms in days (default: 14), shown on PDF |
 
 ### expenses
 | Column | Type | Notes |
@@ -229,7 +230,8 @@ curl -X PUT http://192.168.4.44:5061/api/auth/business \
     "bank_name": "Commonwealth Bank",
     "account_name": "Acme Pty Ltd",
     "bsb": "062-001",
-    "account_number": "12345678"
+    "account_number": "12345678",
+    "payment_terms": 14
   }'
 ```
 

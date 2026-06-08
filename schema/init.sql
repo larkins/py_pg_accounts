@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS users (
     account_name VARCHAR(255),
     account_number VARCHAR(50),
     bsb VARCHAR(20),
+    payment_terms INTEGER NOT NULL DEFAULT 14,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

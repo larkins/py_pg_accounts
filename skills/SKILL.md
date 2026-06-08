@@ -61,7 +61,8 @@ skill.update_business_details(
     bank_name="Commonwealth Bank",
     account_name="Acme Pty Ltd",
     bsb="062-001",
-    account_number="12345678"
+    account_number="12345678",
+    payment_terms=14
 )
 ```
 
@@ -115,6 +116,27 @@ print(profile['account_number'])
 ```
 
 Bank details only appear on the invoice PDF if at least one field is populated. The section is automatically hidden if all bank fields are empty.
+
+### Payment Terms
+
+Each user has a `payment_terms` setting (in days) that controls the "Payment terms: Net X days" line on invoice PDFs. The default is 14 days.
+
+This value should be consistent with the due date set on each invoice (due_date = invoice_date + payment_terms days).
+
+**Set/Update payment terms:**
+
+```python
+skill.update_business_details(
+    payment_terms=30  # 30-day terms
+)
+```
+
+**Read payment terms:**
+
+```python
+profile = skill.get_business_details()
+print(f"Default payment terms: {profile['payment_terms']} days")
+```
 
 ### Upload Business Logo
 
@@ -258,7 +280,7 @@ path = skill.download_invoice_pdf(
 - **Line items table**: Itemized charges
 - **Totals**: Subtotal, GST, total
 - **Bank Details**: Bank name, account name, BSB, account number (when provided)
-- **Footer**: Payment terms (when ABN is registered)
+- **Footer**: Payment terms "Net X days" using user's payment_terms setting (when ABN is registered)
 
 ### List Invoices with Date Filter
 
@@ -372,7 +394,8 @@ skill.update_business_details(
     bank_name="Commonwealth Bank",
     account_name="My Company Pty Ltd",
     bsb="062-001",
-    account_number="12345678"
+    account_number="12345678",
+    payment_terms=14
 )
 
 # 2. Upload logo

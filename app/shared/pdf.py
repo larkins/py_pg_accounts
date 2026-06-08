@@ -167,8 +167,9 @@ def generate_invoice_pdf(user, invoice):
 
     if invoice.customer.gst and user.abn:
         elements.append(Spacer(1, 1*cm))
+        payment_terms = user.payment_terms if user.payment_terms else 14
         elements.append(Paragraph(
-            f'<i>Payment terms: Net 30 days. Please include invoice number {invoice.id[:8].upper()} on payment.</i>',
+            f'<i>Payment terms: Net {payment_terms} days. Please include invoice number {invoice.id[:8].upper()} on payment.</i>',
             styles['Normal']
         ))
 

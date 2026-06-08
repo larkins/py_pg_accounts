@@ -52,6 +52,7 @@ Open-source accounting software built with Python, Flask, and PostgreSQL. Design
 | account_name | VARCHAR(255) | Account holder name (shown on PDF) |
 | account_number | VARCHAR(50) | Bank account number (shown on PDF) |
 | bsb | VARCHAR(20) | Bank State Branch number (shown on PDF) |
+| payment_terms | INTEGER | Default payment terms in days (default: 14) - shown on PDF and used to set due dates |
 | created_at | TIMESTAMPTZ | Creation timestamp |
 | updated_at | TIMESTAMPTZ | Last update timestamp |
 
