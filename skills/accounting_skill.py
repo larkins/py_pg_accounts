@@ -473,6 +473,7 @@ class AccountingSkill:
             **kwargs: Any invoice fields to update. Supported fields:
                 customer_id, client_name, description, invoice_date, due_date,
                 account_category_id, status, payment_date, amount_paid,
+                sent_at, confirmed_received_at, paid_at,
                 ex_gst_amount, gst_type
 
         Returns:
@@ -480,7 +481,7 @@ class AccountingSkill:
         """
         data = {}
         for key, value in kwargs.items():
-            if key in ['customer_id', 'client_name', 'description', 'invoice_date', 'due_date', 'account_category_id', 'status', 'payment_date']:
+            if key in ['customer_id', 'client_name', 'description', 'invoice_date', 'due_date', 'account_category_id', 'status', 'payment_date', 'sent_at', 'confirmed_received_at', 'paid_at']:
                 data[key] = value
             elif key in ['ex_gst_amount', 'gst_type', 'amount_paid']:
                 data[key] = str(value)
@@ -495,7 +496,8 @@ class AccountingSkill:
         amount_paid: Optional[float] = None
     ) -> Dict[str, Any]:
         """
-        Mark an invoice as paid. Sets status='paid' and records payment details.
+        Mark an invoice as paid. Sets status='paid', records payment details,
+        and sets the paid_at timestamp to now.
 
         Args:
             invoice_id: UUID of the invoice
@@ -512,6 +514,52 @@ class AccountingSkill:
             data['amount_paid'] = str(amount_paid)
 
         result = self._make_request('POST', f'/api/invoices/{invoice_id}/mark-paid', data)
+        return result['invoice']
+
+    def mark_invoice_sent(
+        self,
+        invoice_id: str,
+        sent_at: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Mark an invoice as sent. Sets status='sent' and records the sent_at
+        timestamp (defaults to now).
+
+        Args:
+            invoice_id: UUID of the invoice
+            sent_at: Custom ISO 8601 timestamp. Defaults to now (UTC).
+
+        Returns:
+            Dictionary containing the updated invoice data
+        """
+        data = {}
+        if sent_at:
+            data['sent_at'] = sent_at
+
+        result = self._make_request('POST', f'/api/invoices/{invoice_id}/mark-sent', data)
+        return result['invoice']
+
+    def mark_invoice_confirmed(
+        self,
+        invoice_id: str,
+        confirmed_received_at: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Mark an invoice as confirmed received. Sets the confirmed_received_at
+        timestamp (defaults to now). Does not change the status.
+
+        Args:
+            invoice_id: UUID of the invoice
+            confirmed_received_at: Custom ISO 8601 timestamp. Defaults to now (UTC).
+
+        Returns:
+            Dictionary containing the updated invoice data
+        """
+        data = {}
+        if confirmed_received_at:
+            data['confirmed_received_at'] = confirmed_received_at
+
+        result = self._make_request('POST', f'/api/invoices/{invoice_id}/mark-confirmed', data)
         return result['invoice']
 
     def delete_invoice(self, invoice_id: str) -> Dict[str, Any]:

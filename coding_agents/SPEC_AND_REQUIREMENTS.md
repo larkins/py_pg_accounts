@@ -100,6 +100,9 @@ Open-source accounting software built with Python, Flask, and PostgreSQL. Design
 | status | VARCHAR(20) | Invoice status: draft, sent, paid, overdue, cancelled (default: draft) |
 | payment_date | DATE | Date payment was received |
 | amount_paid | NUMERIC(12,2) | Amount that was paid (for partial payments) |
+| sent_at | TIMESTAMPTZ | Timestamp when invoice was sent to customer |
+| confirmed_received_at | TIMESTAMPTZ | Timestamp when customer confirmed receipt |
+| paid_at | TIMESTAMPTZ | Timestamp when payment was received |
 | created_at | TIMESTAMPTZ | Creation timestamp |
 | updated_at | TIMESTAMPTZ | Last update timestamp |
 
@@ -188,7 +191,9 @@ Open-source accounting software built with Python, Flask, and PostgreSQL. Design
 - `PUT /api/invoices/<id>` - Update invoice
 - `DELETE /api/invoices/<id>` - Delete invoice
 - `POST /api/invoices/<id>/upload` - Upload attachment
-- `POST /api/invoices/<id>/mark-paid` - Mark invoice as paid (sets status, payment_date, amount_paid)
+- `POST /api/invoices/<id>/mark-paid` - Mark invoice as paid (sets status, payment_date, amount_paid, paid_at)
+- `POST /api/invoices/<id>/mark-sent` - Mark invoice as sent (sets status='sent', sent_at timestamp)
+- `POST /api/invoices/<id>/mark-confirmed` - Mark invoice as confirmed received (sets confirmed_received_at timestamp)
 - `GET /api/invoices/<id>/pdf` - Generate and download PDF of invoice
 
 ### Customers

@@ -23,6 +23,9 @@ class Invoice(db.Model):
     status = db.Column(db.String(20), nullable=False, default='draft', index=True)
     payment_date = db.Column(db.Date, nullable=True)
     amount_paid = db.Column(db.Numeric(12, 2), nullable=True)
+    sent_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    confirmed_received_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    paid_at = db.Column(db.DateTime(timezone=True), nullable=True)
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=get_utc_now)
     updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=get_utc_now, onupdate=get_utc_now)
 
@@ -56,6 +59,9 @@ class Invoice(db.Model):
             'status': self.status,
             'payment_date': self.payment_date.isoformat() if self.payment_date else None,
             'amount_paid': str(self.amount_paid) if self.amount_paid is not None else None,
+            'sent_at': self.sent_at.isoformat() if self.sent_at else None,
+            'confirmed_received_at': self.confirmed_received_at.isoformat() if self.confirmed_received_at else None,
+            'paid_at': self.paid_at.isoformat() if self.paid_at else None,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }

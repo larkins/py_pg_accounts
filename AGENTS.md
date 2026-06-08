@@ -105,6 +105,9 @@ headers = {"X-API-Key": "user_api_key_here"}
 | status | VARCHAR(20) | draft, sent, paid, overdue, cancelled (default: draft) |
 | payment_date | DATE | Date payment was received |
 | amount_paid | NUMERIC(12,2) | Amount paid (for partial payments) |
+| sent_at | TIMESTAMPTZ | Timestamp when invoice was sent |
+| confirmed_received_at | TIMESTAMPTZ | Timestamp when customer confirmed receipt |
+| paid_at | TIMESTAMPTZ | Timestamp when payment was received |
 
 ### customers
 | Column | Type | Notes |

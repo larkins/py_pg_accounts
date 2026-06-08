@@ -265,7 +265,7 @@ invoice = skill.create_invoice(
 ### Mark an Invoice as Paid
 
 ```python
-# Mark as fully paid (uses today as payment date, total_amount as amount_paid)
+# Mark as fully paid (uses today as payment date, total_amount as amount_paid, paid_at = now)
 paid_invoice = skill.mark_invoice_paid(invoice_id="invoice-uuid")
 
 # Mark as paid with custom date and amount
@@ -273,6 +273,32 @@ paid_invoice = skill.mark_invoice_paid(
     invoice_id="invoice-uuid",
     payment_date="2024-04-10",
     amount_paid=1100.00  # for partial payments
+)
+```
+
+### Mark an Invoice as Sent
+
+```python
+# Mark as sent (sets status='sent', sent_at = now)
+sent_invoice = skill.mark_invoice_sent(invoice_id="invoice-uuid")
+
+# Mark as sent with custom timestamp
+sent_invoice = skill.mark_invoice_sent(
+    invoice_id="invoice-uuid",
+    sent_at="2024-04-08T10:30:00Z"
+)
+```
+
+### Mark an Invoice as Confirmed Received
+
+```python
+# Mark as confirmed received (sets confirmed_received_at = now)
+confirmed = skill.mark_invoice_confirmed(invoice_id="invoice-uuid")
+
+# Mark as confirmed with custom timestamp
+confirmed = skill.mark_invoice_confirmed(
+    invoice_id="invoice-uuid",
+    confirmed_received_at="2024-04-09T14:22:00Z"
 )
 ```
 
@@ -295,6 +321,11 @@ invoice = skill.update_invoice(
 ```
 
 **Invoice statuses:** `draft`, `sent`, `paid`, `overdue`, `cancelled`
+
+**Lifecycle timestamps:**
+- `sent_at` - automatically set by `mark_invoice_sent()`
+- `confirmed_received_at` - automatically set by `mark_invoice_confirmed()`
+- `paid_at` - automatically set by `mark_invoice_paid()`
 
 ### Download Invoice PDF
 

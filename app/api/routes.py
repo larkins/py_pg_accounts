@@ -3,7 +3,7 @@ from werkzeug.utils import secure_filename
 import os
 import io
 
-from app.models import db
+from app.models import db, get_utc_now
 from app.models.user import User
 from app.models.expense import Expense
 from app.models.invoice import Invoice
@@ -781,6 +781,34 @@ def update_invoice(invoice_id):
             else:
                 invoice.amount_paid = validate_decimal(data['amount_paid'], required=True, min_value=0)
 
+        from datetime import datetime as dt_class
+        if 'sent_at' in data:
+            if data['sent_at'] is None or data['sent_at'] == '':
+                invoice.sent_at = None
+            else:
+                try:
+                    invoice.sent_at = dt_class.fromisoformat(data['sent_at'].replace('Z', '+00:00'))
+                except (ValueError, TypeError) as e:
+                    return jsonify({'error': f'Invalid sent_at timestamp: {str(e)}'}), 400
+
+        if 'confirmed_received_at' in data:
+            if data['confirmed_received_at'] is None or data['confirmed_received_at'] == '':
+                invoice.confirmed_received_at = None
+            else:
+                try:
+                    invoice.confirmed_received_at = dt_class.fromisoformat(data['confirmed_received_at'].replace('Z', '+00:00'))
+                except (ValueError, TypeError) as e:
+                    return jsonify({'error': f'Invalid confirmed_received_at timestamp: {str(e)}'}), 400
+
+        if 'paid_at' in data:
+            if data['paid_at'] is None or data['paid_at'] == '':
+                invoice.paid_at = None
+            else:
+                try:
+                    invoice.paid_at = dt_class.fromisoformat(data['paid_at'].replace('Z', '+00:00'))
+                except (ValueError, TypeError) as e:
+                    return jsonify({'error': f'Invalid paid_at timestamp: {str(e)}'}), 400
+
         invoice.gst_amount = Invoice.calculate_gst(invoice.ex_gst_amount, invoice.gst_type)
         invoice.total_amount = Invoice.calculate_total(invoice.ex_gst_amount, invoice.gst_amount)
 
@@ -834,6 +862,7 @@ def mark_invoice_paid(invoice_id):
     """
     Mark an invoice as paid. Sets status='paid', records payment_date
     (defaults to today) and amount_paid (defaults to total_amount if not provided).
+    Also sets paid_at timestamp to now.
     """
     if not validate_uuid(invoice_id):
         return jsonify({'error': 'Invalid invoice ID'}), 400
@@ -865,6 +894,7 @@ def mark_invoice_paid(invoice_id):
         invoice.amount_paid = invoice.total_amount
 
     invoice.status = 'paid'
+    invoice.paid_at = get_utc_now()
 
     log_activity(
         user_id=request.current_user.id,
@@ -878,6 +908,93 @@ def mark_invoice_paid(invoice_id):
     db.session.commit()
 
     return jsonify({'message': 'Invoice marked as paid', 'invoice': invoice.to_dict()}), 200
+
+
+@api_bp.route('/invoices/<invoice_id>/mark-sent', methods=['POST'])
+@api_key_required
+def mark_invoice_sent(invoice_id):
+    """
+    Mark an invoice as sent. Sets status='sent' and records sent_at timestamp
+    (defaults to now). Optionally accepts a custom sent_at ISO timestamp.
+    """
+    if not validate_uuid(invoice_id):
+        return jsonify({'error': 'Invalid invoice ID'}), 400
+
+    invoice = Invoice.query.filter_by(id=invoice_id, user_id=request.current_user.id).first()
+    if not invoice:
+        return jsonify({'error': 'Invoice not found'}), 404
+
+    data = request.get_json() or {}
+
+    old_values = invoice.to_dict()
+
+    sent_at_str = data.get('sent_at')
+    if sent_at_str:
+        try:
+            from datetime import datetime as dt_class
+            invoice.sent_at = dt_class.fromisoformat(sent_at_str.replace('Z', '+00:00'))
+        except (ValueError, TypeError) as e:
+            return jsonify({'error': f'Invalid sent_at timestamp: {str(e)}'}), 400
+    else:
+        invoice.sent_at = get_utc_now()
+
+    invoice.status = 'sent'
+
+    log_activity(
+        user_id=request.current_user.id,
+        action='UPDATE',
+        table_name='invoices',
+        record_id=invoice.id,
+        old_values=old_values,
+        new_values=invoice.to_dict(),
+        ip_address=request.remote_addr
+    )
+    db.session.commit()
+
+    return jsonify({'message': 'Invoice marked as sent', 'invoice': invoice.to_dict()}), 200
+
+
+@api_bp.route('/invoices/<invoice_id>/mark-confirmed', methods=['POST'])
+@api_key_required
+def mark_invoice_confirmed(invoice_id):
+    """
+    Mark an invoice as confirmed received. Sets status='sent' (kept) and
+    records confirmed_received_at timestamp (defaults to now). Optionally
+    accepts a custom confirmed_received_at ISO timestamp.
+    """
+    if not validate_uuid(invoice_id):
+        return jsonify({'error': 'Invalid invoice ID'}), 400
+
+    invoice = Invoice.query.filter_by(id=invoice_id, user_id=request.current_user.id).first()
+    if not invoice:
+        return jsonify({'error': 'Invoice not found'}), 404
+
+    data = request.get_json() or {}
+
+    old_values = invoice.to_dict()
+
+    confirmed_at_str = data.get('confirmed_received_at')
+    if confirmed_at_str:
+        try:
+            from datetime import datetime as dt_class
+            invoice.confirmed_received_at = dt_class.fromisoformat(confirmed_at_str.replace('Z', '+00:00'))
+        except (ValueError, TypeError) as e:
+            return jsonify({'error': f'Invalid confirmed_received_at timestamp: {str(e)}'}), 400
+    else:
+        invoice.confirmed_received_at = get_utc_now()
+
+    log_activity(
+        user_id=request.current_user.id,
+        action='UPDATE',
+        table_name='invoices',
+        record_id=invoice.id,
+        old_values=old_values,
+        new_values=invoice.to_dict(),
+        ip_address=request.remote_addr
+    )
+    db.session.commit()
+
+    return jsonify({'message': 'Invoice confirmed received', 'invoice': invoice.to_dict()}), 200
 
 
 @api_bp.route('/invoices/<invoice_id>/upload', methods=['POST'])

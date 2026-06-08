@@ -85,6 +85,9 @@ CREATE TABLE IF NOT EXISTS invoices (
     status VARCHAR(20) NOT NULL DEFAULT 'draft',
     payment_date DATE,
     amount_paid NUMERIC(12, 2),
+    sent_at TIMESTAMPTZ,
+    confirmed_received_at TIMESTAMPTZ,
+    paid_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
