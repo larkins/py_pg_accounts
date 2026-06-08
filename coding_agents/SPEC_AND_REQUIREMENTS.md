@@ -97,6 +97,9 @@ Open-source accounting software built with Python, Flask, and PostgreSQL. Design
 | invoice_date | DATE | Invoice date |
 | due_date | DATE | Payment due date |
 | attachment_path | VARCHAR(500) | Path to uploaded file |
+| status | VARCHAR(20) | Invoice status: draft, sent, paid, overdue, cancelled (default: draft) |
+| payment_date | DATE | Date payment was received |
+| amount_paid | NUMERIC(12,2) | Amount that was paid (for partial payments) |
 | created_at | TIMESTAMPTZ | Creation timestamp |
 | updated_at | TIMESTAMPTZ | Last update timestamp |
 
@@ -185,6 +188,7 @@ Open-source accounting software built with Python, Flask, and PostgreSQL. Design
 - `PUT /api/invoices/<id>` - Update invoice
 - `DELETE /api/invoices/<id>` - Delete invoice
 - `POST /api/invoices/<id>/upload` - Upload attachment
+- `POST /api/invoices/<id>/mark-paid` - Mark invoice as paid (sets status, payment_date, amount_paid)
 - `GET /api/invoices/<id>/pdf` - Generate and download PDF of invoice
 
 ### Customers

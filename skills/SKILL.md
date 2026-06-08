@@ -255,9 +255,46 @@ invoice = skill.create_invoice(
     invoice_date="2024-03-15",
     gst_type=0.1,
     description="Consulting services for Q1",
-    due_date="2024-04-15"  # optional
+    due_date="2024-04-15",  # optional
+    status="draft",  # optional: draft, sent, paid, overdue, cancelled
+    payment_date=None,  # optional: YYYY-MM-DD
+    amount_paid=None  # optional: numeric
 )
 ```
+
+### Mark an Invoice as Paid
+
+```python
+# Mark as fully paid (uses today as payment date, total_amount as amount_paid)
+paid_invoice = skill.mark_invoice_paid(invoice_id="invoice-uuid")
+
+# Mark as paid with custom date and amount
+paid_invoice = skill.mark_invoice_paid(
+    invoice_id="invoice-uuid",
+    payment_date="2024-04-10",
+    amount_paid=1100.00  # for partial payments
+)
+```
+
+### Update Invoice Status
+
+```python
+# Update via the general update_invoice method
+invoice = skill.update_invoice(
+    invoice_id="invoice-uuid",
+    status="sent"  # or "draft", "paid", "overdue", "cancelled"
+)
+
+# Or update with payment details
+invoice = skill.update_invoice(
+    invoice_id="invoice-uuid",
+    status="paid",
+    payment_date="2024-04-10",
+    amount_paid=1100.00
+)
+```
+
+**Invoice statuses:** `draft`, `sent`, `paid`, `overdue`, `cancelled`
 
 ### Download Invoice PDF
 

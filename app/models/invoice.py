@@ -20,6 +20,9 @@ class Invoice(db.Model):
     invoice_date = db.Column(db.Date, nullable=False)
     due_date = db.Column(db.Date, nullable=True)
     attachment_path = db.Column(db.String(500), nullable=True)
+    status = db.Column(db.String(20), nullable=False, default='draft', index=True)
+    payment_date = db.Column(db.Date, nullable=True)
+    amount_paid = db.Column(db.Numeric(12, 2), nullable=True)
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=get_utc_now)
     updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=get_utc_now, onupdate=get_utc_now)
 
@@ -50,6 +53,9 @@ class Invoice(db.Model):
             'invoice_date': self.invoice_date.isoformat() if self.invoice_date else None,
             'due_date': self.due_date.isoformat() if self.due_date else None,
             'attachment_path': self.attachment_path,
+            'status': self.status,
+            'payment_date': self.payment_date.isoformat() if self.payment_date else None,
+            'amount_paid': str(self.amount_paid) if self.amount_paid is not None else None,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }

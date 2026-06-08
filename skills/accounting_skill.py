@@ -385,7 +385,10 @@ class AccountingSkill:
         gst_type: float = 0.1,
         description: str = "",
         due_date: Optional[str] = None,
-        account_category_id: Optional[str] = None
+        account_category_id: Optional[str] = None,
+        status: str = "draft",
+        payment_date: Optional[str] = None,
+        amount_paid: Optional[float] = None
     ) -> Dict[str, Any]:
         """
         Create a new invoice. Requires an existing customer_id.
@@ -399,6 +402,9 @@ class AccountingSkill:
             description: Optional description
             due_date: Optional payment due date in YYYY-MM-DD format
             account_category_id: Optional UUID of the account category
+            status: Invoice status (default 'draft'). One of: draft, sent, paid, overdue, cancelled
+            payment_date: Date payment was received (YYYY-MM-DD)
+            amount_paid: Amount that was paid (for partial payments)
 
         Returns:
             Dictionary containing the created invoice data
@@ -409,12 +415,17 @@ class AccountingSkill:
             'ex_gst_amount': str(ex_gst_amount),
             'invoice_date': invoice_date,
             'gst_type': str(gst_type),
-            'description': description
+            'description': description,
+            'status': status
         }
         if due_date:
             data['due_date'] = due_date
         if account_category_id:
             data['account_category_id'] = account_category_id
+        if payment_date:
+            data['payment_date'] = payment_date
+        if amount_paid is not None:
+            data['amount_paid'] = str(amount_paid)
 
         result = self._make_request('POST', '/api/invoices', data)
         return result['invoice']
@@ -459,19 +470,48 @@ class AccountingSkill:
 
         Args:
             invoice_id: UUID of the invoice to update
-            **kwargs: Any invoice fields to update (customer_id, client_name, ex_gst_amount, etc.)
+            **kwargs: Any invoice fields to update. Supported fields:
+                customer_id, client_name, description, invoice_date, due_date,
+                account_category_id, status, payment_date, amount_paid,
+                ex_gst_amount, gst_type
 
         Returns:
             Dictionary containing the updated invoice data
         """
         data = {}
         for key, value in kwargs.items():
-            if key in ['customer_id', 'client_name', 'description', 'invoice_date', 'due_date', 'account_category_id']:
+            if key in ['customer_id', 'client_name', 'description', 'invoice_date', 'due_date', 'account_category_id', 'status', 'payment_date']:
                 data[key] = value
-            elif key in ['ex_gst_amount', 'gst_type']:
+            elif key in ['ex_gst_amount', 'gst_type', 'amount_paid']:
                 data[key] = str(value)
 
         result = self._make_request('PUT', f'/api/invoices/{invoice_id}', data)
+        return result['invoice']
+
+    def mark_invoice_paid(
+        self,
+        invoice_id: str,
+        payment_date: Optional[str] = None,
+        amount_paid: Optional[float] = None
+    ) -> Dict[str, Any]:
+        """
+        Mark an invoice as paid. Sets status='paid' and records payment details.
+
+        Args:
+            invoice_id: UUID of the invoice
+            payment_date: Date payment was received (YYYY-MM-DD). Defaults to today.
+            amount_paid: Amount paid. Defaults to invoice total_amount (full payment).
+
+        Returns:
+            Dictionary containing the updated invoice data
+        """
+        data = {}
+        if payment_date:
+            data['payment_date'] = payment_date
+        if amount_paid is not None:
+            data['amount_paid'] = str(amount_paid)
+
+        result = self._make_request('POST', f'/api/invoices/{invoice_id}/mark-paid', data)
         return result['invoice']
 
     def delete_invoice(self, invoice_id: str) -> Dict[str, Any]:

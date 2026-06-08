@@ -102,6 +102,9 @@ headers = {"X-API-Key": "user_api_key_here"}
 | invoice_date | DATE | Invoice date |
 | due_date | DATE | Due date |
 | attachment_path | VARCHAR(500) | Path to attachment |
+| status | VARCHAR(20) | draft, sent, paid, overdue, cancelled (default: draft) |
+| payment_date | DATE | Date payment was received |
+| amount_paid | NUMERIC(12,2) | Amount paid (for partial payments) |
 
 ### customers
 | Column | Type | Notes |

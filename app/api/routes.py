@@ -646,6 +646,16 @@ def create_invoice():
         if account_category_id and not validate_uuid(account_category_id):
             return jsonify({'error': 'Invalid account category ID'}), 400
 
+        status = data.get('status', 'draft')
+        valid_statuses = ['draft', 'sent', 'paid', 'overdue', 'cancelled']
+        if status not in valid_statuses:
+            return jsonify({'error': f'Invalid status. Must be one of: {", ".join(valid_statuses)}'}), 400
+
+        payment_date = validate_date_string(data.get('payment_date'))
+        amount_paid = None
+        if data.get('amount_paid') is not None and data.get('amount_paid') != '':
+            amount_paid = validate_decimal(data.get('amount_paid'), required=True, min_value=0)
+
         gst_amount = Invoice.calculate_gst(ex_gst_amount, gst_type)
         total_amount = Invoice.calculate_total(ex_gst_amount, gst_amount)
 
@@ -663,7 +673,10 @@ def create_invoice():
         total_amount=total_amount,
         invoice_date=invoice_date,
         due_date=due_date,
-        account_category_id=account_category_id
+        account_category_id=account_category_id,
+        status=status,
+        payment_date=payment_date,
+        amount_paid=amount_paid
     )
 
     db.session.add(invoice)
@@ -749,6 +762,25 @@ def update_invoice(invoice_id):
                 return jsonify({'error': 'Customer not found'}), 404
             invoice.customer_id = new_customer_id
 
+        if 'status' in data:
+            new_status = data['status']
+            valid_statuses = ['draft', 'sent', 'paid', 'overdue', 'cancelled']
+            if new_status not in valid_statuses:
+                return jsonify({'error': f'Invalid status. Must be one of: {", ".join(valid_statuses)}'}), 400
+            invoice.status = new_status
+
+        if 'payment_date' in data:
+            if data['payment_date']:
+                invoice.payment_date = validate_date_string(data['payment_date'], required=True)
+            else:
+                invoice.payment_date = None
+
+        if 'amount_paid' in data:
+            if data['amount_paid'] is None or data['amount_paid'] == '':
+                invoice.amount_paid = None
+            else:
+                invoice.amount_paid = validate_decimal(data['amount_paid'], required=True, min_value=0)
+
         invoice.gst_amount = Invoice.calculate_gst(invoice.ex_gst_amount, invoice.gst_type)
         invoice.total_amount = Invoice.calculate_total(invoice.ex_gst_amount, invoice.gst_amount)
 
@@ -794,6 +826,58 @@ def delete_invoice(invoice_id):
     db.session.commit()
 
     return jsonify({'message': 'Invoice deleted'}), 200
+
+
+@api_bp.route('/invoices/<invoice_id>/mark-paid', methods=['POST'])
+@api_key_required
+def mark_invoice_paid(invoice_id):
+    """
+    Mark an invoice as paid. Sets status='paid', records payment_date
+    (defaults to today) and amount_paid (defaults to total_amount if not provided).
+    """
+    if not validate_uuid(invoice_id):
+        return jsonify({'error': 'Invalid invoice ID'}), 400
+
+    invoice = Invoice.query.filter_by(id=invoice_id, user_id=request.current_user.id).first()
+    if not invoice:
+        return jsonify({'error': 'Invoice not found'}), 404
+
+    data = request.get_json() or {}
+
+    old_values = invoice.to_dict()
+
+    payment_date = data.get('payment_date')
+    if payment_date:
+        try:
+            invoice.payment_date = validate_date_string(payment_date, required=True)
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
+    else:
+        from datetime import date as date_class
+        invoice.payment_date = date_class.today()
+
+    if 'amount_paid' in data and data['amount_paid'] is not None and data['amount_paid'] != '':
+        try:
+            invoice.amount_paid = validate_decimal(data['amount_paid'], required=True, min_value=0)
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
+    else:
+        invoice.amount_paid = invoice.total_amount
+
+    invoice.status = 'paid'
+
+    log_activity(
+        user_id=request.current_user.id,
+        action='UPDATE',
+        table_name='invoices',
+        record_id=invoice.id,
+        old_values=old_values,
+        new_values=invoice.to_dict(),
+        ip_address=request.remote_addr
+    )
+    db.session.commit()
+
+    return jsonify({'message': 'Invoice marked as paid', 'invoice': invoice.to_dict()}), 200
 
 
 @api_bp.route('/invoices/<invoice_id>/upload', methods=['POST'])

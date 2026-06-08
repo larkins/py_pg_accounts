@@ -82,6 +82,9 @@ CREATE TABLE IF NOT EXISTS invoices (
     invoice_date DATE NOT NULL,
     due_date DATE,
     attachment_path VARCHAR(500),
+    status VARCHAR(20) NOT NULL DEFAULT 'draft',
+    payment_date DATE,
+    amount_paid NUMERIC(12, 2),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -90,6 +93,7 @@ CREATE INDEX IF NOT EXISTS idx_invoices_user_id ON invoices(user_id);
 CREATE INDEX IF NOT EXISTS idx_invoices_invoice_date ON invoices(invoice_date);
 CREATE INDEX IF NOT EXISTS idx_invoices_created_at ON invoices(created_at);
 CREATE INDEX IF NOT EXISTS idx_invoices_customer_id ON invoices(customer_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status);
 
 -- Customers table
 CREATE TABLE IF NOT EXISTS customers (
