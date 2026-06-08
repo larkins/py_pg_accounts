@@ -95,7 +95,11 @@ class AccountingSkill:
         bsb: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Update business profile details. These appear on invoice PDFs.
+        Create or update business profile details. These appear on invoice PDFs.
+
+        Bank details can be set/updated using the bank_name, account_name,
+        account_number, and bsb parameters. To clear a field, pass an empty
+        string ("").
 
         Args:
             business_name: Business name

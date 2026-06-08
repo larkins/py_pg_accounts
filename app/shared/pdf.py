@@ -40,6 +40,8 @@ def generate_invoice_pdf(user, invoice):
             pass
 
     business_paragraphs = []
+    if user.business_name:
+        business_paragraphs.append(f'<b>{user.business_name}</b>')
     if user.abn:
         business_paragraphs.append(f'ABN: {user.abn}')
     if user.address:

@@ -49,6 +49,8 @@ Each user has a business profile that appears on invoice PDFs. The business name
 
 ### Update Business Details
 
+The `update_business_details()` method is used to create or update all business profile fields including bank details. There's no separate "create" endpoint for bank details - they're set as part of the business profile.
+
 ```python
 skill.update_business_details(
     business_name="Acme Pty Ltd",
@@ -62,6 +64,57 @@ skill.update_business_details(
     account_number="12345678"
 )
 ```
+
+To clear a bank detail field, pass an empty string:
+
+```python
+skill.update_business_details(
+    bank_name="",
+    account_name="",
+    account_number="",
+    bsb=""
+)
+```
+
+### Bank Details
+
+Bank details are stored on the user/business profile and appear on invoice PDFs (at the bottom). They are managed via the same `update_business_details()` method.
+
+**Set/Update bank details:**
+
+```python
+skill.update_business_details(
+    bank_name="Commonwealth Bank",
+    account_name="Acme Pty Ltd",
+    bsb="062-001",
+    account_number="12345678"
+)
+```
+
+**Clear (delete) bank details:**
+
+There is no separate "delete" endpoint. To clear a bank detail, set it to an empty string:
+
+```python
+skill.update_business_details(
+    bank_name="",
+    account_name="",
+    bsb="",
+    account_number=""
+)
+```
+
+**Read bank details:**
+
+```python
+profile = skill.get_business_details()
+print(profile['bank_name'])
+print(profile['account_name'])
+print(profile['bsb'])
+print(profile['account_number'])
+```
+
+Bank details only appear on the invoice PDF if at least one field is populated. The section is automatically hidden if all bank fields are empty.
 
 ### Upload Business Logo
 
