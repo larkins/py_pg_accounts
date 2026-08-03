@@ -1,5 +1,5 @@
 [Unit]
-Description=Python PostgreSQL Accounting System
+Description=OCR Queue Processor for Receipt Scanning
 After=postgresql.service network-online.target
 Wants=postgresql.service network-online.target
 StartLimitIntervalSec=300
@@ -8,14 +8,8 @@ StartLimitBurst=10
 [Service]
 Type=simple
 Environment="PATH=%h/py_pg_accounts/venv/bin:/usr/local/bin:/usr/bin:/bin"
-Environment="DB_HOST=localhost"
-Environment="DB_PORT=5432"
-Environment="DB_NAME=py_pg_accounts"
-Environment="DB_USER=postgres"
-Environment="DB_PASSWORD=1234"
 WorkingDirectory=%h/py_pg_accounts
-ExecStartPre=/bin/sleep 15
-ExecStart=%h/py_pg_accounts/venv/bin/python3 run.py --host 192.168.4.44
+ExecStart=%h/py_pg_accounts/venv/bin/python3 %h/py_pg_accounts/processes/ocr_processor.py --config %h/py_pg_accounts/config.yaml --poll-interval 5
 Restart=on-failure
 RestartSec=30
 StandardOutput=journal

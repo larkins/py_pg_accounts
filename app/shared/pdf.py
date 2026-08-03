@@ -132,7 +132,7 @@ def generate_invoice_pdf(user, invoice):
 
     items_data = [
         ['Description', 'Amount'],
-        [invoice.client_name, f"${invoice.ex_gst_amount:.2f}"]
+        [invoice.description or 'Services', f"${invoice.ex_gst_amount:.2f}"]
     ]
     items_table = Table(items_data, colWidths=[12*cm, 4*cm])
     items_table.setStyle(TableStyle([
