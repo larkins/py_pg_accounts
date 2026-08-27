@@ -445,11 +445,20 @@ def update_expense(expense_id):
     old_values = expense.to_dict()
 
     try:
+        # 2026-08-04 OCR refactor: editing an expense (e.g. by an agent doing
+        # manual review) clears the requires_review flag as soon as the user
+        # supplies a real vendor name. This is safe because the only way
+        # requires_review is set is by the OCR pipeline, and the only way to
+        # clear it is to provide the missing data.
+        editing_real_data = False
+
         if 'vendor_name' in data:
             vendor_name = data['vendor_name'].strip()
             if not vendor_name:
                 return jsonify({'error': 'Vendor name cannot be empty'}), 400
             expense.vendor_name = vendor_name
+            if vendor_name and vendor_name != 'REQUIRES REVIEW':
+                editing_real_data = True
 
         if 'description' in data:
             expense.description = data['description']
@@ -494,8 +503,14 @@ def update_expense(expense_id):
         if 'currency' in data:
             expense.currency = data['currency']
 
+        if 'ex_gst_amount' in data or 'gst_amount' in data or 'amount' in data:
+            editing_real_data = True
+
         expense.gst_amount = Expense.calculate_gst(expense.ex_gst_amount, expense.gst_type)
         expense.total_amount = Expense.calculate_total(expense.ex_gst_amount, expense.gst_amount)
+
+        if editing_real_data and expense.requires_review:
+            expense.requires_review = False
 
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
@@ -1193,3 +1208,78 @@ def delete_logo():
     db.session.commit()
 
     return jsonify({'message': 'Logo deleted'}), 200
+
+
+# ---------------------------------------------------------------------------
+# OCR queue endpoints (2026-08-04 refactor)
+# ---------------------------------------------------------------------------
+# Exposes the ocr_queue table so an agent (Evie) can pick up jobs that the
+# new tesseract + regex pipeline couldn't auto-parse, and use its native
+# vision tool to inspect the image and PATCH the expense back via the API.
+# ---------------------------------------------------------------------------
+
+from app.models.ocr_queue import OcrQueue
+
+
+@api_bp.route('/ocr-queue', methods=['GET'])
+@api_key_required
+def list_ocr_queue():
+    """List OCR queue jobs. Filter by status with ?status=pending|failed|completed."""
+    status = request.args.get('status')
+    needs_review = request.args.get('needs_review')  # '1' → only failed jobs with raw_text (review pool)
+
+    q = OcrQueue.query
+    if status:
+        q = q.filter_by(status=status)
+    q = q.order_by(OcrQueue.created_at.desc())
+    rows = q.limit(100).all()
+
+    out = []
+    for j in rows:
+        d = j.to_dict()
+        exp = Expense.query.get(j.expense_id)
+        d['expense'] = exp.to_dict() if exp else None
+        out.append(d)
+
+    if needs_review == '1':
+        out = [
+            d for d in out
+            if d['status'] == 'failed'
+            and isinstance(d.get('extracted_data'), dict)
+            and 'raw_text' in d['extracted_data']
+        ]
+
+    return jsonify({'jobs': out, 'count': len(out)}), 200
+
+
+@api_bp.route('/ocr-queue/<job_id>', methods=['GET'])
+@api_key_required
+def get_ocr_queue_job(job_id):
+    if not validate_uuid(job_id):
+        return jsonify({'error': 'Invalid job ID'}), 400
+    job = OcrQueue.query.get(job_id)
+    if not job:
+        return jsonify({'error': 'Job not found'}), 404
+    d = job.to_dict()
+    exp = Expense.query.get(job.expense_id)
+    d['expense'] = exp.to_dict() if exp else None
+    return jsonify({'job': d}), 200
+
+
+@api_bp.route('/ocr-queue/<job_id>/mark-completed', methods=['POST'])
+@api_key_required
+def mark_ocr_queue_completed(job_id):
+    """Mark an OCR job done after manual review (clears requires_review on the expense)."""
+    if not validate_uuid(job_id):
+        return jsonify({'error': 'Invalid job ID'}), 400
+    job = OcrQueue.query.get(job_id)
+    if not job:
+        return jsonify({'error': 'Job not found'}), 404
+
+    job.status = 'completed'
+    job.processed_at = get_utc_now()
+    exp = Expense.query.get(job.expense_id)
+    if exp and exp.requires_review:
+        exp.requires_review = False
+    db.session.commit()
+    return jsonify({'message': 'Marked completed', 'job': job.to_dict()}), 200

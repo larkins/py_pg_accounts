@@ -137,26 +137,91 @@ Receipts uploaded via PWA are processed asynchronously:
 
 1. PWA uploads image → Creates expense with "Pending OCR" placeholder
 2. OCR job queued in `ocr_queue` table with status "pending"
-3. `ocr_processor.py` polls queue, calls vision model (gemma4)
+3. `ocr_processor.py` polls queue, runs **local tesseract OCR** + regex parser
 4. Extracted data updates expense record
-5. Job status set to "completed" or "failed"
+5. Job status set to "completed" (auto) or "failed" (manual review needed)
+
+### Tesseract Pipeline (2026-08-04 refactor)
+
+The previous vision LLM (`gemma4` at `192.168.4.41:11434`) is gone. New pipeline:
+
+- **Stage 1**: tesseract OCR (local) — image → raw text
+- **Stage 2**: regex parser (local) — raw text → {vendor, date, amounts, gst}
+- **Stage 3**: manual review (agent, optional) — if auto-parse fails, image + raw
+  text saved to `ocr_queue.extracted_data` for an agent (Evie) to pick up via
+  the `image` tool and PATCH the expense back via the API.
+
+### System Dependencies
+
+```bash
+# Required on the host running the OCR processor
+sudo apt install tesseract-ocr          # English by default
+sudo apt install tesseract-ocr-eng      # explicit
+sudo apt install poppler-utils          # PDF receipts (pdftoppm)
+```
 
 ### Vision Model Config (config.yaml)
+
 ```yaml
-vision:
-  ollama_host: "http://192.168.4.41:11434"
-  model: "gemma4:31b"
-  timeout: 2100.0
+ocr:
+  tesseract_lang: "eng"
+  min_confidence: "low"          # 'high' is strict, 'low' accepts partial parses
+  stale_timeout_seconds: 300
+  manual_review_enabled: true
 ```
 
 ### Running OCR Processor
+
 ```bash
 # As systemd service (recommended)
 systemctl --user start py_pg_ocr_processor
 
 # Or manually
 python processes/ocr_processor.py --config config.yaml
+
+# One-shot batch (test mode)
+python processes/ocr_processor.py --config config.yaml --once
 ```
+
+### Manual Review Workflow
+
+When tesseract can't parse a receipt, the job is marked `failed` and the raw
+OCR text is saved to `ocr_queue.extracted_data.raw_text`. An agent (Evie)
+picks these up via the API:
+
+```bash
+# List jobs needing manual review
+curl -s "http://localhost:5061/api/ocr-queue?needs_review=1" \
+  -H "X-API-Key: <api_key>" | jq
+
+# Inspect one job in detail (raw text + parsed fields)
+curl -s "http://localhost:5061/api/ocr-queue/<job_id>" \
+  -H "X-API-Key: <api_key>" | jq
+
+# After manual review, mark the job done
+curl -s -X POST "http://localhost:5061/api/ocr-queue/<job_id>/mark-completed" \
+  -H "X-API-Key: <api_key>"
+```
+
+The agent uses its image-capable vision tool on `image_path` to extract clean
+fields, then PATCHes the expense:
+
+```bash
+curl -X PUT "http://localhost:5061/api/expenses/<expense_id>" \
+  -H "X-API-Key: <api_key>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "vendor_name": "Bunnings",
+    "ex_gst_amount": 45.50,
+    "gst_amount": 4.55,
+    "gst_type": 0.1,
+    "total_amount": 50.05,
+    "expense_date": "2026-08-04"
+  }'
+```
+
+PUT auto-clears `requires_review=false` when the supplied vendor_name is real
+(not "REQUIRES REVIEW") or any amount/date is provided.
 
 ## Common Operations
 
@@ -280,7 +345,7 @@ py_pg_accounts/
 
 2. **OCR Processing**: Receipts uploaded via PWA require OCR processing. The expense will show "Pending OCR" until processed.
 
-3. **Vision Model**: Uses Ollama with gemma4 model at `192.168.4.41:11434`. Processing is slow (~30+ seconds).
+3. **OCR Pipeline**: Local tesseract + regex parser. Previous vision LLM (gemma4 at 192.168.4.41:11434) is gone as of 2026-08-04. Manual review of low-confidence parses is done by an agent (Evie) via its native vision tool.
 
 4. **Financial Year**: Australian (July 1 - June 30)
 
