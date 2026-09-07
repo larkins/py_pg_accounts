@@ -43,3 +43,4 @@ config.yaml
 
 # Uploads
 uploads/
+skills/__pycache__/
