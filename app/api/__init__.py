@@ -40,6 +40,8 @@ def create_api_app(config_path=None):
     from app.api.reports import reports_bp
     app.register_blueprint(api_bp)
     app.register_blueprint(reports_bp)
+    from app.api.bas import bas_bp
+    app.register_blueprint(bas_bp)
 
     @app.route('/api/health')
     def health():

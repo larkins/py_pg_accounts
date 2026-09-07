@@ -16,6 +16,7 @@ from .customer import Customer
 from .account_category import AccountCategory
 from .activity_log import ActivityLog
 from .ocr_queue import OcrQueue
+from .bas_lodgement import BasLodgement
 
 # Payroll models (2026-08-27 — payroll_expansion.md).
 from .employee import Employee
@@ -28,7 +29,7 @@ from .super_payment import SuperPayment, SUPER_PAYMENT_STATUSES
 __all__ = [
     'db', 'get_utc_now',
     'User', 'Expense', 'Invoice', 'Customer', 'AccountCategory',
-    'ActivityLog', 'OcrQueue',
+    'ActivityLog', 'OcrQueue', 'BasLodgement',
     'Employee', 'PayEvent', 'PayEventLine', 'PayslipDelivery', 'SuperPayment',
     'PAY_EVENT_STATUSES', 'PAY_EVENT_LINE_TYPES',
     'PAYSLIP_DELIVERY_STATUSES', 'PAYSLIP_RECIPIENT_KINDS',

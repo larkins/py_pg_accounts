@@ -51,6 +51,7 @@ def create_app(config_path=None):
     from app.api.routes import api_bp
     from app.api.reports import reports_bp
     from app.api.payroll import payroll_api_bp
+    from app.api.bas import bas_bp
     from app.hmi.routes import hmi_bp
     from app.hmi.payroll import payroll_hmi_bp
     from app.pwa.routes import pwa_bp
@@ -58,6 +59,7 @@ def create_app(config_path=None):
     app.register_blueprint(api_bp)
     app.register_blueprint(reports_bp)
     app.register_blueprint(payroll_api_bp)
+    app.register_blueprint(bas_bp)
     app.register_blueprint(hmi_bp)
     app.register_blueprint(payroll_hmi_bp)
     app.register_blueprint(pwa_bp)
