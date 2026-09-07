@@ -42,6 +42,8 @@ def create_api_app(config_path=None):
     app.register_blueprint(reports_bp)
     from app.api.bas import bas_bp
     app.register_blueprint(bas_bp)
+    from app.api.bank_transactions import bank_txn_bp
+    app.register_blueprint(bank_txn_bp)
 
     @app.route('/api/health')
     def health():

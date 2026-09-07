@@ -17,6 +17,7 @@ from .account_category import AccountCategory
 from .activity_log import ActivityLog
 from .ocr_queue import OcrQueue
 from .bas_lodgement import BasLodgement
+from .bank_transaction import BankTransaction, BANK_TXN_METHODS, BANK_TXN_SOURCES
 
 # Payroll models (2026-08-27 — payroll_expansion.md).
 from .employee import Employee
@@ -30,6 +31,7 @@ __all__ = [
     'db', 'get_utc_now',
     'User', 'Expense', 'Invoice', 'Customer', 'AccountCategory',
     'ActivityLog', 'OcrQueue', 'BasLodgement',
+    'BankTransaction', 'BANK_TXN_METHODS', 'BANK_TXN_SOURCES',
     'Employee', 'PayEvent', 'PayEventLine', 'PayslipDelivery', 'SuperPayment',
     'PAY_EVENT_STATUSES', 'PAY_EVENT_LINE_TYPES',
     'PAYSLIP_DELIVERY_STATUSES', 'PAYSLIP_RECIPIENT_KINDS',
