@@ -192,6 +192,387 @@ def generate_invoice_pdf(user, invoice):
     return buffer
 
 
+def generate_statement_of_account_pdf(user, customer, invoices, as_of_date):
+    """
+    Generate a Statement of Account PDF for a customer.
+
+    Lists every invoice (paid + outstanding) in chronological order with a
+    running balance, plus a summary block with totals and a 30/60/90/90+ days
+    aging breakdown of the outstanding amount.
+
+    Args:
+        user:         User row (drives the business-header / bank-details block).
+        customer:     Customer row (drives the bill-to block).
+        invoices:     Iterable of Invoice rows belonging to this customer.
+                      Should be ordered by invoice_date ascending. The function
+                      will sort defensively if not.
+        as_of_date:   date — the "statement as at" date. Typically today.
+
+    Returns:
+        BytesIO buffer at position 0.
+    """
+    from datetime import date as _date
+    from reportlab.lib.enums import TA_RIGHT, TA_LEFT, TA_CENTER
+
+    # ---- normalise inputs -------------------------------------------------
+    invoices = list(invoices)
+    invoices.sort(key=lambda inv: (inv.invoice_date, inv.created_at or _date.min))
+
+    # Decimals
+    from decimal import Decimal
+    def D(x):
+        if x is None or x == '':
+            return Decimal('0.00')
+        return Decimal(str(x))
+
+    # ---- summary aggregates ----------------------------------------------
+    total_invoiced = Decimal('0.00')    # sum of total_amount across all invoices
+    total_paid = Decimal('0.00')        # sum of amount_paid where paid
+    outstanding = Decimal('0.00')       # sum of (total - paid) where status != 'paid'
+    aging = {'current': Decimal('0.00'),
+             '1_30':    Decimal('0.00'),
+             '31_60':   Decimal('0.00'),
+             '61_90':   Decimal('0.00'),
+             '90_plus': Decimal('0.00')}
+
+    for inv in invoices:
+        total = D(inv.total_amount)
+        paid = D(inv.amount_paid) if inv.status == 'paid' else Decimal('0.00')
+        total_invoiced += total
+        total_paid += paid
+        if inv.status != 'paid':
+            bal = total - paid
+            outstanding += bal
+            # days overdue = as_of_date - due_date (only count if past due)
+            if inv.due_date and as_of_date > inv.due_date:
+                days = (as_of_date - inv.due_date).days
+                if days <= 30:
+                    aging['1_30'] += bal
+                elif days <= 60:
+                    aging['31_60'] += bal
+                elif days <= 90:
+                    aging['61_90'] += bal
+                else:
+                    aging['90_plus'] += bal
+            else:
+                aging['current'] += bal
+
+    # ---- doc setup --------------------------------------------------------
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer, pagesize=A4,
+        rightMargin=1.5*cm, leftMargin=1.5*cm,
+        topMargin=1.2*cm, bottomMargin=1.2*cm,
+    )
+    elements = []
+    styles = getSampleStyleSheet()
+
+    # ---- header: logo + business block (mirrors invoice layout) ----------
+    logo_cell = []
+    if user.logo_path and os.path.exists(user.logo_path):
+        try:
+            logo_img = Image(user.logo_path, width=4*cm, height=2*cm, kind='proportional')
+            logo_cell.append(logo_img)
+        except Exception:
+            pass
+
+    business_paragraphs = []
+    if user.business_name:
+        business_paragraphs.append(f'<b>{user.business_name}</b>')
+    if user.abn:
+        business_paragraphs.append(f'ABN: {user.abn}')
+    if user.address:
+        business_paragraphs.append(user.address.replace(chr(10), '<br/>'))
+    if user.contact_email:
+        business_paragraphs.append(f'Email: {user.contact_email}')
+    if user.contact_number:
+        business_paragraphs.append(f'Phone: {user.contact_number}')
+
+    business_style = ParagraphStyle(
+        'StmtBusiness', parent=styles['Normal'],
+        fontSize=9, alignment=TA_RIGHT, leading=12,
+    )
+    business_cell = [Paragraph('<br/>'.join(business_paragraphs), business_style)] if business_paragraphs else ['']
+
+    business_name_style = ParagraphStyle(
+        'StmtBusinessName', parent=styles['Heading2'],
+        fontSize=20, alignment=0, leading=24,
+        textColor=colors.HexColor('#2c3e50'),
+        spaceAfter=0, spaceBefore=0,
+    )
+    business_name_cell = [Paragraph(user.business_name or '', business_name_style)] if user.business_name else ['']
+
+    header_data = [
+        [logo_cell, business_cell],
+        [business_name_cell, ''],
+    ]
+    header_table = Table(header_data, colWidths=[8*cm, 8.5*cm])
+    header_table.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('ALIGN', (0, 0), (0, 0), 'LEFT'),    # logo: left
+        ('ALIGN', (0, 1), (0, 1), 'CENTER'),  # Peristyle name: centered under logo
+        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 0),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+        ('TOPPADDING', (0, 0), (-1, -1), 0),
+        ('BOTTOMPADDING', (0, 0), (0, 0), 2),
+        ('TOPPADDING', (0, 1), (0, 1), 4),
+        ('BOTTOMPADDING', (0, 1), (0, 1), 0),
+    ]))
+    elements.append(header_table)
+    elements.append(Spacer(1, 0.2*cm))
+
+    # ---- title bar --------------------------------------------------------
+    title_style = ParagraphStyle(
+        'StmtTitle', parent=styles['Heading1'], fontSize=20,
+        spaceAfter=0, alignment=0,
+        textColor=colors.HexColor('#2c3e50'),
+    )
+    title_cell = Paragraph('STATEMENT OF ACCOUNT', title_style)
+    title_right_style = ParagraphStyle(
+        'StmtTitleRight', parent=styles['Normal'], fontSize=10,
+        alignment=TA_RIGHT, textColor=colors.HexColor('#7f8c8d'),
+    )
+    title_right = Paragraph(f'Statement date: <b>{as_of_date.isoformat() if hasattr(as_of_date, "isoformat") else as_of_date}</b>',
+                            title_right_style)
+    title_row = Table([[title_cell, title_right]], colWidths=[10.5*cm, 6*cm])
+    title_row.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ('LINEBELOW', (0, 0), (-1, -1), 1.5, colors.HexColor('#2c3e50')),
+    ]))
+    elements.append(title_row)
+    elements.append(Spacer(1, 0.3*cm))
+
+    # ---- bill-to block ----------------------------------------------------
+    elements.append(Paragraph('<b>Statement to:</b>', styles['Heading3']))
+    customer_info = f"<b>{customer.name}</b><br/>"
+    if customer.contact_name:
+        customer_info += f"Attn: {customer.contact_name}<br/>"
+    if customer.address:
+        customer_info += f"{customer.address.replace(chr(10), '<br/>')}<br/>"
+    if customer.contact_email:
+        customer_info += f"Email: {customer.contact_email}<br/>"
+    if customer.contact_number:
+        customer_info += f"Phone: {customer.contact_number}<br/>"
+    if customer.abn:
+        customer_info += f"ABN: {customer.abn}<br/>"
+    elements.append(Paragraph(customer_info, styles['Normal']))
+    elements.append(Spacer(1, 0.3*cm))
+
+    # ---- summary block ---------------------------------------------------
+    summary_label_style = ParagraphStyle(
+        'StmtSummaryLbl', parent=styles['Normal'], fontSize=10,
+        textColor=colors.HexColor('#7f8c8d'),
+    )
+    summary_val_style = ParagraphStyle(
+        'StmtSummaryVal', parent=styles['Normal'], fontSize=11,
+        fontName='Helvetica-Bold',
+    )
+
+    def sum_cell(label, value_str, highlight=False):
+        bg = colors.HexColor('#ecf0f1') if not highlight else colors.HexColor('#34495e')
+        fg_lbl = colors.HexColor('#7f8c8d') if not highlight else colors.white
+        fg_val = colors.black if not highlight else colors.white
+        lbl_style = ParagraphStyle('s', parent=summary_label_style, textColor=fg_lbl)
+        val_style = ParagraphStyle('v', parent=summary_val_style, textColor=fg_val)
+        return [Paragraph(label, lbl_style), Paragraph(value_str, val_style)]
+
+    summary_data = [
+        sum_cell('Total invoiced (inc GST)', f"${total_invoiced:,.2f}"),
+        sum_cell('Total paid', f"${total_paid:,.2f}"),
+        sum_cell('Outstanding balance', f"${outstanding:,.2f}", highlight=True),
+    ]
+    summary_table = Table(summary_data, colWidths=[5.5*cm, 4.5*cm, 5.5*cm, 1*cm])
+    # We want three label/value pairs side by side, not stacked. Re-layout:
+    summary_data2 = [[
+        Paragraph('Total invoiced (inc GST)', summary_label_style),
+        Paragraph('Total paid', summary_label_style),
+        Paragraph('Outstanding balance', ParagraphStyle('h', parent=summary_label_style, textColor=colors.white)),
+    ], [
+        Paragraph(f"${total_invoiced:,.2f}", summary_val_style),
+        Paragraph(f"${total_paid:,.2f}", summary_val_style),
+        Paragraph(f"${outstanding:,.2f}", ParagraphStyle('hv', parent=summary_val_style, textColor=colors.white)),
+    ]]
+    summary_table = Table(summary_data2, colWidths=[5.5*cm, 4.5*cm, 5.5*cm])
+    summary_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#ecf0f1')),
+        ('BACKGROUND', (2, 0), (2, -1), colors.HexColor('#34495e')),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('LEFTPADDING', (0, 0), (-1, -1), 6),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+        ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor('#bdc3c7')),
+        ('LINEAFTER', (0, 0), (1, -1), 0.5, colors.HexColor('#bdc3c7')),
+    ]))
+    elements.append(summary_table)
+    elements.append(Spacer(1, 0.25*cm))
+
+    # ---- aging breakdown (only if there's anything outstanding) ----------
+    if outstanding > 0:
+        elements.append(Paragraph('<b>Outstanding aging</b>', styles['Heading3']))
+        aging_data = [
+            ['Current', '1\u201330 days', '31\u201360 days', '61\u201390 days', '90+ days'],
+            [f"${aging['current']:,.2f}",
+             f"${aging['1_30']:,.2f}",
+             f"${aging['31_60']:,.2f}",
+             f"${aging['61_90']:,.2f}",
+             f"${aging['90_plus']:,.2f}"],
+        ]
+        aging_table = Table(aging_data, colWidths=[3.3*cm]*5)
+        aging_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#34495e')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor('#bdc3c7')),
+            ('LINEAFTER', (0, 0), (3, -1), 0.5, colors.HexColor('#bdc3c7')),
+        ]))
+        elements.append(aging_table)
+        elements.append(Spacer(1, 0.3*cm))
+
+    # ---- invoice line items ----------------------------------------------
+    elements.append(Paragraph('<b>Invoices</b>', styles['Heading3']))
+
+    header_row = ['Date', 'Invoice #', 'Description', 'Due', 'Amount', 'Paid', 'Balance', 'Status']
+    rows = [header_row]
+    running_balance = Decimal('0.00')
+
+    status_color_map = {
+        'paid':    colors.HexColor('#27ae60'),
+        'sent':    colors.HexColor('#e67e22'),
+        'overdue': colors.HexColor('#c0392b'),
+        'draft':   colors.HexColor('#95a5a6'),
+    }
+
+    for inv in invoices:
+        total = D(inv.total_amount)
+        paid = D(inv.amount_paid) if inv.status == 'paid' else Decimal('0.00')
+        bal = total - paid
+        running_balance += bal
+
+        inv_due = inv.due_date.isoformat() if inv.due_date else '—'
+        status_disp = inv.status
+        if status_disp == 'sent' and inv.due_date and as_of_date > inv.due_date:
+            status_disp = 'overdue'
+
+        # truncate long descriptions
+        desc = inv.description or ''
+        if len(desc) > 38:
+            desc = desc[:35] + '…'
+
+        rows.append([
+            inv.invoice_date.isoformat(),
+            inv.id[:8].upper(),
+            Paragraph(desc, ParagraphStyle('d', parent=styles['Normal'], fontSize=8.5)),
+            inv_due,
+            f"${total:,.2f}",
+            f"${paid:,.2f}" if inv.status == 'paid' else '—',
+            f"${bal:,.2f}" if bal > 0 else '—',
+            status_disp.upper(),
+        ])
+
+    col_widths = [1.9*cm, 2.0*cm, 5.6*cm, 1.8*cm, 1.9*cm, 1.7*cm, 1.9*cm, 1.7*cm]
+    items_table = Table(rows, colWidths=col_widths, repeatRows=1)
+    ts = TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#34495e')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 9),
+        ('FONTSIZE', (0, 1), (-1, -1), 8.5),
+        ('ALIGN', (4, 0), (6, -1), 'RIGHT'),
+        ('ALIGN', (7, 0), (7, -1), 'CENTER'),
+        ('ALIGN', (0, 0), (3, -1), 'LEFT'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        ('LEFTPADDING', (0, 0), (-1, -1), 4),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+        ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor('#bdc3c7')),
+        ('LINEBELOW', (0, 0), (-1, 0), 1, colors.HexColor('#2c3e50')),
+        ('LINEAFTER', (0, 0), (6, -1), 0.25, colors.HexColor('#bdc3c7')),
+    ])
+    # alternating row backgrounds, and status color highlight
+    for i, inv in enumerate(invoices, start=1):
+        if i % 2 == 0:
+            ts.add('BACKGROUND', (0, i), (-1, i), colors.HexColor('#f8f9fa'))
+        status_disp = inv.status
+        if status_disp == 'sent' and inv.due_date and as_of_date > inv.due_date:
+            status_disp = 'overdue'
+        c = status_color_map.get(status_disp, colors.black)
+        ts.add('TEXTCOLOR', (7, i), (7, i), c)
+        ts.add('FONTNAME', (7, i), (7, i), 'Helvetica-Bold')
+    items_table.setStyle(ts)
+    elements.append(items_table)
+    elements.append(Spacer(1, 0.2*cm))
+
+    # ---- totals row ------------------------------------------------------
+    totals_data = [
+        ['', '', '', '', 'TOTAL INVOICED', f"${total_invoiced:,.2f}"],
+        ['', '', '', '', 'TOTAL PAID', f"${total_paid:,.2f}"],
+        ['', '', '', '', 'OUTSTANDING', f"${outstanding:,.2f}"],
+    ]
+    totals_table = Table(totals_data, colWidths=col_widths)
+    totals_table.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('ALIGN', (4, 0), (5, -1), 'RIGHT'),
+        ('TOPPADDING', (0, 0), (-1, -1), 2),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+        ('LINEABOVE', (4, 0), (5, 0), 1, colors.black),
+        ('LINEABOVE', (4, 2), (5, 2), 1, colors.black),
+        ('FONTNAME', (4, 2), (5, 2), 'Helvetica-Bold'),
+        ('TEXTCOLOR', (4, 2), (5, 2), colors.HexColor('#c0392b')),
+    ]))
+    elements.append(totals_table)
+    elements.append(Spacer(1, 0.35*cm))
+
+    # ---- bank details + payment terms ------------------------------------
+    if outstanding > 0:
+        if user.bank_name or user.account_name or user.account_number or user.bsb:
+            # Render inline so it flows naturally across page breaks if needed.
+            elements.append(Paragraph(
+                '<font size="10" color="#2c3e50"><b>Payment details</b></font>',
+                styles['Normal'],
+            ))
+            bank_bits = []
+            if user.bank_name:
+                bank_bits.append(f"<b>Bank:</b> {user.bank_name}")
+            if user.account_name:
+                bank_bits.append(f"<b>Account name:</b> {user.account_name}")
+            if user.bsb:
+                bank_bits.append(f"<b>BSB:</b> {user.bsb}")
+            if user.account_number:
+                bank_bits.append(f"<b>Account number:</b> {user.account_number}")
+            bank_style = ParagraphStyle(
+                'BankLine', parent=styles['Normal'], fontSize=9, leading=11,
+            )
+            elements.append(Paragraph(' &nbsp;|&nbsp; '.join(bank_bits), bank_style))
+
+        payment_terms = user.payment_terms if user.payment_terms else 14
+        elements.append(Spacer(1, 0.2*cm))
+        elements.append(Paragraph(
+            f'<i>Standard payment terms: Net {payment_terms} days. Please quote the invoice number on payment. '
+            f'Thank you for your business.</i>',
+            ParagraphStyle('Terms', parent=styles['Normal'], fontSize=8.5, textColor=colors.HexColor('#7f8c8d')),
+        ))
+    else:
+        elements.append(Paragraph(
+            '<i>This account is paid in full. Thank you for your prompt payment.</i>',
+            styles['Normal'],
+        ))
+
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer
+
+
 def generate_payslip_pdf(user, employee, pay_event, lines=None, business_name=None, abn=None, address=None):
     """
     Generate a payslip PDF (server-side replacement for the fpdf2 scripts in

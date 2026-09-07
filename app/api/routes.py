@@ -191,6 +191,154 @@ def get_customer(customer_id):
     return jsonify({'customer': customer.to_dict()}), 200
 
 
+# -----------------------------------------------------------------------------
+# Statement of Account — added 2026-09-01.
+#
+#   GET /api/customers/<customer_id>/statement.json
+#   GET /api/customers/<customer_id>/statement.pdf[?as_of=YYYY-MM-DD]
+#
+# Returns every invoice (paid + outstanding) for the customer that belongs to
+# the requesting user, plus totals + 30/60/90/90+ aging of the outstanding
+# balance. Invoices are scoped by user_id because invoices carry the user
+# (business-owner) dimension; customers are not user-scoped (shared across
+# users with valid API keys), consistent with /api/customers behaviour.
+# -----------------------------------------------------------------------------
+def _build_statement_payload(user_id, customer_id, as_of_date):
+    """Shared helper for both the JSON and PDF endpoints."""
+    from datetime import date as _date, datetime as _datetime
+
+    customer = Customer.query.get(customer_id)
+    if not customer:
+        return None, None, None
+
+    # parse / default as_of
+    if as_of_date is None:
+        as_of_date = _date.today()
+    if isinstance(as_of_date, str):
+        try:
+            as_of_date = _datetime.strptime(as_of_date, '%Y-%m-%d').date()
+        except ValueError:
+            return 'invalid_as_of', None, None
+
+    invoices = (
+        Invoice.query
+        .filter_by(customer_id=customer_id, user_id=user_id)
+        .order_by(Invoice.invoice_date.asc(), Invoice.created_at.asc())
+        .all()
+    )
+    return customer, invoices, as_of_date
+
+
+@api_bp.route('/customers/<customer_id>/statement.json', methods=['GET'])
+@api_key_required
+def customer_statement_json(customer_id):
+    if not validate_uuid(customer_id):
+        return jsonify({'error': 'Invalid customer ID'}), 400
+
+    customer, invoices, as_of_date = _build_statement_payload(
+        request.current_user.id, customer_id,
+        request.args.get('as_of'),
+    )
+    if customer is None:
+        return jsonify({'error': 'Customer not found'}), 404
+    if customer == 'invalid_as_of':
+        return jsonify({'error': 'as_of must be YYYY-MM-DD'}), 400
+
+    from decimal import Decimal
+    def D(x):
+        if x is None or x == '':
+            return Decimal('0.00')
+        return Decimal(str(x))
+
+    total_invoiced = Decimal('0.00')
+    total_paid = Decimal('0.00')
+    outstanding = Decimal('0.00')
+    aging = {'current': '0.00', '1_30': '0.00', '31_60': '0.00',
+             '61_90': '0.00', '90_plus': '0.00'}
+
+    line_items = []
+    for inv in invoices:
+        total = D(inv.total_amount)
+        paid = D(inv.amount_paid) if inv.status == 'paid' else Decimal('0.00')
+        bal = total - paid
+        total_invoiced += total
+        total_paid += paid
+        if inv.status != 'paid':
+            outstanding += bal
+            if inv.due_date and as_of_date > inv.due_date:
+                days = (as_of_date - inv.due_date).days
+                if days <= 30:
+                    aging['1_30'] = str(Decimal(aging['1_30']) + bal)
+                elif days <= 60:
+                    aging['31_60'] = str(Decimal(aging['31_60']) + bal)
+                elif days <= 90:
+                    aging['61_90'] = str(Decimal(aging['61_90']) + bal)
+                else:
+                    aging['90_plus'] = str(Decimal(aging['90_plus']) + bal)
+            else:
+                aging['current'] = str(Decimal(aging['current']) + bal)
+
+        status_disp = inv.status
+        if status_disp == 'sent' and inv.due_date and as_of_date > inv.due_date:
+            status_disp = 'overdue'
+
+        line_items.append({
+            'id': inv.id,
+            'invoice_date': inv.invoice_date.isoformat(),
+            'invoice_number': inv.id[:8].upper(),
+            'description': inv.description,
+            'due_date': inv.due_date.isoformat() if inv.due_date else None,
+            'amount': str(total),
+            'amount_paid': str(paid) if inv.status == 'paid' else None,
+            'balance': str(bal) if bal > 0 else '0.00',
+            'status': status_disp,
+            'status_raw': inv.status,
+        })
+
+    return jsonify({
+        'customer': customer.to_dict(),
+        'as_of': as_of_date.isoformat(),
+        'summary': {
+            'total_invoiced': str(total_invoiced),
+            'total_paid':     str(total_paid),
+            'outstanding':    str(outstanding),
+            'invoice_count':  len(invoices),
+            'paid_count':     sum(1 for i in invoices if i.status == 'paid'),
+            'outstanding_count': sum(1 for i in invoices if i.status != 'paid'),
+        },
+        'aging': aging,
+        'invoices': line_items,
+    }), 200
+
+
+@api_bp.route('/customers/<customer_id>/statement.pdf', methods=['GET'])
+@api_key_required
+def customer_statement_pdf(customer_id):
+    if not validate_uuid(customer_id):
+        return jsonify({'error': 'Invalid customer ID'}), 400
+
+    customer, invoices, as_of_date = _build_statement_payload(
+        request.current_user.id, customer_id,
+        request.args.get('as_of'),
+    )
+    if customer is None:
+        return jsonify({'error': 'Customer not found'}), 404
+    if customer == 'invalid_as_of':
+        return jsonify({'error': 'as_of must be YYYY-MM-DD'}), 400
+
+    from app.shared.pdf import generate_statement_of_account_pdf as build_pdf
+    buffer = build_pdf(request.current_user, customer, invoices, as_of_date)
+
+    as_of_str = as_of_date.isoformat() if hasattr(as_of_date, 'isoformat') else str(as_of_date)
+    safe_name = ''.join(c for c in customer.name if c.isalnum() or c in (' ', '_')).strip().replace(' ', '_')
+    return send_file(
+        buffer,
+        mimetype='application/pdf',
+        as_attachment=True,
+        download_name=f'Statement_{safe_name}_{as_of_str}.pdf',
+    )
+
+
 @api_bp.route('/customers', methods=['POST'])
 @api_key_required
 def create_customer():
