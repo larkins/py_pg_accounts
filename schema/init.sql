@@ -1,5 +1,11 @@
 -- PostgreSQL Schema for Accounting System
 -- Run as: psql -d py_pg_accounts -f schema/init.sql
+--
+-- This file is the authoritative schema. New tables are normally created
+-- automatically by db.create_all() on app startup (see app/models/*), but
+-- every committed model MUST also be reflected here so fresh installs from
+-- scratch have the full schema. Last synced with live DB on 2026-09-07
+-- (added bas_lodgements from 01cc090 + bank_transactions from 74eef7b).
 
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
@@ -67,6 +73,22 @@ CREATE INDEX IF NOT EXISTS idx_expenses_expense_date ON expenses(expense_date);
 CREATE INDEX IF NOT EXISTS idx_expenses_created_at ON expenses(created_at);
 CREATE INDEX IF NOT EXISTS idx_expenses_requires_review ON expenses(requires_review);
 
+-- Customers table (defined BEFORE invoices because invoices.customer_id FKs to it)
+CREATE TABLE IF NOT EXISTS customers (
+    id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v4()::text,
+    name VARCHAR(255) NOT NULL,
+    contact_name VARCHAR(255),
+    address TEXT,
+    contact_email VARCHAR(255),
+    abn VARCHAR(20),
+    contact_number VARCHAR(50),
+    gst BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_customers_name ON customers(name);
+
 -- Invoices table
 CREATE TABLE IF NOT EXISTS invoices (
     id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v4()::text,
@@ -97,22 +119,6 @@ CREATE INDEX IF NOT EXISTS idx_invoices_invoice_date ON invoices(invoice_date);
 CREATE INDEX IF NOT EXISTS idx_invoices_created_at ON invoices(created_at);
 CREATE INDEX IF NOT EXISTS idx_invoices_customer_id ON invoices(customer_id);
 CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status);
-
--- Customers table
-CREATE TABLE IF NOT EXISTS customers (
-    id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v4()::text,
-    name VARCHAR(255) NOT NULL,
-    contact_name VARCHAR(255),
-    address TEXT,
-    contact_email VARCHAR(255),
-    abn VARCHAR(20),
-    contact_number VARCHAR(50),
-    gst BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_customers_name ON customers(name);
 
 -- Activity Logs table
 CREATE TABLE IF NOT EXISTS activity_logs (
@@ -304,6 +310,88 @@ CREATE TABLE IF NOT EXISTS super_payments (
 CREATE INDEX IF NOT EXISTS idx_super_payments_user_emp_date
     ON super_payments(user_id, employee_id, remittance_date);
 
+-- Bas lodgements table (added 2026-08-31)
+--
+-- Records the FACT of lodgement with the ATO: receipt ID, timestamp, account
+-- name, final settled amount, and any manual adjustments (prior-period
+-- credits, deferred BAS, label adjustments, instalment interest). Separate
+-- from /api/reports/quarterly-bas (which returns COMPUTED net GST) because
+-- the ATO settlement often differs due to prior-period credits, label
+-- adjustments, etc.
+--
+-- Australian FY: Q1=Jul-Sep, Q2=Oct-Dec, Q3=Jan-Mar, Q4=Apr-Jun. Per-user +
+-- per-(financial_year, quarter) uniqueness prevents duplicate lodgement
+-- entries for the same period.
+CREATE TABLE IF NOT EXISTS bas_lodgements (
+    id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v4()::text,
+    user_id VARCHAR(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    financial_year VARCHAR(9) NOT NULL,                 -- e.g. 'FY2025/26'
+    quarter INTEGER NOT NULL,                          -- 1..4 (Australian FY)
+    period_start DATE NOT NULL,
+    period_end DATE NOT NULL,
+    ato_receipt_id VARCHAR(64),
+    ato_account_name VARCHAR(255),
+    lodged_at TIMESTAMPTZ NOT NULL,
+    lodgement_method VARCHAR(20) NOT NULL DEFAULT 'online',  -- 'online' | 'paper' | 'agent'
+    gst_collected NUMERIC(12, 2),                      -- BAS label 1A
+    gst_paid NUMERIC(12, 2),                           -- BAS label 1B
+    computed_net_gst NUMERIC(12, 2),                   -- 1A - 1B before ATO adjustments
+    final_amount NUMERIC(12, 2) NOT NULL,              -- actually settled
+    final_amount_type VARCHAR(10) NOT NULL,            -- 'credit' | 'owe' | 'zero'
+    prior_credit_carried NUMERIC(12, 2) DEFAULT 0,
+    other_adjustments NUMERIC(12, 2) DEFAULT 0,
+    adjustments_note TEXT,
+    notes TEXT,
+    screenshot_path VARCHAR(500),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_bas_lodgements_user_id
+    ON bas_lodgements(user_id);
+-- One lodgement per (user, FY, quarter). Two lodgements for the same period
+-- would be a recording error; surface it via 409 instead of silently allowing.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_bas_lodgements_user_fy_quarter
+    ON bas_lodgements(user_id, financial_year, quarter);
+
+-- Bank transactions table (added 2026-09-07)
+--
+-- Records payments received into the business bank account with full
+-- bank-side provenance: transaction ID, payer-supplied reference, method
+-- (Osko/BPay/direct credit/etc.), payer name + account, amount, settlement
+-- date. Optional FK back to invoice so each bank txn can be linked to the
+-- invoice it pays (or left null for non-invoice receipts like interest,
+-- refunds, owner contributions).
+--
+-- Why this exists: the Invoice model has no field for bank-side provenance,
+-- so before this table the bank transaction ID + reference string had
+-- nowhere to go. Without them we can't reconcile the bank statement
+-- against invoices, and the BAS report can't show real settlement dates.
+CREATE TABLE IF NOT EXISTS bank_transactions (
+    id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v4()::text,
+    user_id VARCHAR(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    invoice_id VARCHAR(36) REFERENCES invoices(id) ON DELETE SET NULL,
+    transaction_id VARCHAR(64),                        -- bank-side txn ID, e.g. CTBAAUSNXXXN...
+    reference VARCHAR(255),                            -- payer-supplied ref, e.g. 'INV-XXX - SOFTWARE'
+    method VARCHAR(32),                                -- 'osko' | 'bpay' | 'direct_credit' | 'cheque' | 'cash' | 'other'
+    payer_name VARCHAR(255),
+    payer_account VARCHAR(64),
+    amount NUMERIC(12, 2) NOT NULL,
+    currency VARCHAR(3) NOT NULL DEFAULT 'AUD',
+    transaction_date DATE NOT NULL,                    -- date the bank shows it as processed (BAS date)
+    settled_at TIMESTAMPTZ,
+    notes TEXT,
+    raw_source VARCHAR(32) NOT NULL DEFAULT 'manual',  -- 'manual' | 'bank_feed_csv' | 'screenshot_ocr'
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS ix_bank_transactions_user_id
+    ON bank_transactions(user_id);
+CREATE INDEX IF NOT EXISTS ix_bank_transactions_invoice_id
+    ON bank_transactions(invoice_id);
+CREATE INDEX IF NOT EXISTS ix_bank_transactions_transaction_date
+    ON bank_transactions(transaction_date);
+
 -- Reuse the existing update_updated_at_column() function
 DROP TRIGGER IF EXISTS update_employees_updated_at ON employees;
 CREATE TRIGGER update_employees_updated_at
@@ -320,6 +408,13 @@ CREATE TRIGGER update_super_payments_updated_at
     BEFORE UPDATE ON super_payments
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_bas_lodgements_updated_at ON bas_lodgements;
+CREATE TRIGGER update_bas_lodgements_updated_at
+    BEFORE UPDATE ON bas_lodgements
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+-- bank_transactions has no updated_at column (audit-only, immutable row),
+-- so no trigger needed.
+
 -- Comments for documentation
 COMMENT ON TABLE users IS 'User accounts with authentication and API access. email_verified required before API key usage.';
 COMMENT ON TABLE account_categories IS 'Chart of accounts categories for classification';
@@ -332,3 +427,5 @@ COMMENT ON TABLE pay_events IS 'One row per payslip issued. Headline amounts are
 COMMENT ON TABLE pay_event_lines IS 'Itemised breakdown of a pay event (earnings, tax, deductions, allowances, employer contributions).';
 COMMENT ON TABLE payslip_deliveries IS 'Audit trail of every payslip email sent. One row per recipient per send.';
 COMMENT ON TABLE super_payments IS 'Superannuation remittances. One row per actual fund payment, covering one or more pay_events.';
+COMMENT ON TABLE bas_lodgements IS 'BAS (Business Activity Statement) lodgements with the ATO. Records the FACT of lodgement (receipt ID, settled amount, manual adjustments), separate from the COMPUTED figures in /api/reports/quarterly-bas.';
+COMMENT ON TABLE bank_transactions IS 'Bank-side provenance for received payments: transaction ID, payer-supplied reference, method (Osko/BPay/etc.), amount, settlement date. Optional FK to invoice. Immutable row (no updated_at) — corrections are delete + re-record.';
