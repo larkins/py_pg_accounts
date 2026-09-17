@@ -17,7 +17,7 @@ bas_lodgements
   period_start        first day of quarter
   period_end          last day of quarter
   ato_receipt_id      e.g. '9021291175'
-  ato_account_name    e.g. 'LARKINS, MICHAEL JOHN'
+  ato_account_name    e.g. '<your ATO account name as shown on the BAS>'
   lodged_at           ISO-8601 datetime when lodged
   lodgement_method    'online' | 'paper' | 'agent' (default 'online')
   gst_collected       BAS label 1A (snapshot at lodgement)
@@ -83,7 +83,7 @@ lodgement = skill.create_bas_lodgement(
         "credit" if computed_net_gst < 0 else "zero"
     ),
     ato_receipt_id="9021291175",              # from the ATO confirmation page
-    ato_account_name="LARKINS, MICHAEL JOHN",
+    ato_account_name="<your ATO account name as shown on the BAS>",
     lodgement_method="online",
     gst_collected=gst_collected,
     gst_paid=gst_paid,

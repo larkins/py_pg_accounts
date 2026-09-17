@@ -55,7 +55,7 @@ Invoices with status `sent` and `due_date < as_of_date` get rolled into the 1-30
 
 ## PDF layout (single-page A4)
 
-- Peristyle header (top-left logo, top-right business details, ABN)
+- Business header (top-left logo, top-right business details, ABN) —
 - Bill-to block (customer name, contact, address)
 - Summary tiles row: Total invoiced | Total paid | **Outstanding**
 - 5-bucket aging bar (current / 1-30 / 31-60 / 61-90 / 90+)

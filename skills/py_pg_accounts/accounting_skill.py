@@ -782,7 +782,8 @@ class AccountingSkill:
         """
         Download a Statement of Account PDF for a customer.
 
-        Single-page A4 with Peristyle header + bill-to block + summary tiles +
+        Single-page A4 with business header (logo + business details + ABN) +
+        bill-to block + summary tiles +
         5-bucket aging + invoice table with running balance + bank details +
         payment terms. Status colors: green=paid, red=overdue (sent AND past
         due), orange=sent.
@@ -979,7 +980,7 @@ class AccountingSkill:
             final_amount: Amount actually settled with the ATO
             final_amount_type: 'credit' | 'owe' | 'zero'
             ato_receipt_id: Optional ATO receipt ID, e.g. '9021291175'
-            ato_account_name: Optional ATO account name, e.g. 'LARKINS, MICHAEL JOHN'
+            ato_account_name: Optional ATO account name as shown on the BAS
             lodgement_method: 'online' (default) | 'paper' | 'agent'
             gst_collected: Optional BAS label 1A (snapshot at lodgement time)
             gst_paid: Optional BAS label 1B (snapshot at lodgement time)
