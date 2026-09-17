@@ -64,7 +64,7 @@ def _split_name(legal_name, preferred_name=None):
       otherwise falls back to the first token of legal_name.
     - `last` is always derived from legal_name (the legal record), since
       preferred_name alone often doesn't include the surname (e.g.
-      preferred="Jessica", legal="Jessica Paul" → ("Jessica", "Paul")).
+      preferred="Alice", legal="Alice Smith" → ("Alice", "Smith")).
 
     Single-token names return (token, '').
     """

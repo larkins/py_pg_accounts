@@ -493,7 +493,7 @@ def create_pay_event():
                 sort_order=int(line.get('sort_order', 0) or 0),
             ))
     else:
-        # Default 3-line breakdown — matches Jessica's existing payslips.
+        # Default 3-line breakdown — matches Alice Smith's existing payslips.
         db.session.add(PayEventLine(
             pay_event_id=pe.id, line_type='earning',
             description='Gross wages', amount=gross_amount,

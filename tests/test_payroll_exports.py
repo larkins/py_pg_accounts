@@ -154,7 +154,7 @@ class TestDetailRecord:
         defaults = {
             'bsb': '123-456',
             'account_number': '12345678',
-            'account_name': 'Jessica Paul',
+            'account_name': 'Alice Smith',
             'amount': '998.00',
             'lodgement_ref': 'JP 170926',
         }
@@ -236,7 +236,7 @@ class TestBuildAbaFile:
             {
                 'bsb': '123-456',
                 'account_number': '12345678',
-                'account_name': 'Jessica Paul',
+                'account_name': 'Alice Smith',
                 'amount': '998.00',
                 'lodgement_ref': 'JP 170926',
             },
@@ -289,14 +289,14 @@ class TestBuildAbaFile:
 
 class TestSuperCsvSplitName:
     def test_full_name_with_preferred_first(self):
-        first, last = _super_split_name('Jessica Paul', preferred_name='Jessica')
-        assert first == 'Jessica'
-        assert last == 'Paul'
+        first, last = _super_split_name('Alice Smith', preferred_name='Alice')
+        assert first == 'Alice'
+        assert last == 'Smith'
 
     def test_preferred_with_full_name(self):
-        first, last = _super_split_name('Jessica Paul', preferred_name='Jess Paul')
-        assert first == 'Jess'
-        assert last == 'Paul'
+        first, last = _super_split_name('Alice Smith', preferred_name='Al Smith')
+        assert first == 'Al'
+        assert last == 'Smith'
 
     def test_no_preferred_falls_back_to_legal(self):
         first, last = _super_split_name('Jane Smith')
@@ -319,8 +319,8 @@ class TestBuildSuperCsv:
     def _row(self, **overrides):
         defaults = {
             'member_number': '999999999',
-            'legal_name': 'Jessica Paul',
-            'preferred_name': 'Jess',
+            'legal_name': 'Alice Smith',
+            'preferred_name': 'Al',
             'date_of_birth': None,
             'pay_period_start': date(2026, 9, 1),
             'pay_period_end': date(2026, 9, 7),
@@ -346,8 +346,8 @@ class TestBuildSuperCsv:
         csv_text = build_super_csv([self._row()])
         reader = csv.DictReader(io.StringIO(csv_text.lstrip('\ufeff')))
         row = next(reader)
-        assert row['FirstName'] == 'Jess'
-        assert row['LastName'] == 'Paul'
+        assert row['FirstName'] == 'Al'
+        assert row['LastName'] == 'Smith'
 
     def test_dates_iso_format(self):
         csv_text = build_super_csv([self._row()])
@@ -445,8 +445,8 @@ class TestBuildSaff:
         from datetime import date
         defaults = {
             'member_number': '999999999',
-            'family_name': 'Paul',
-            'given_name': 'Jessica',
+            'family_name': 'Smith',
+            'given_name': 'Alice',
             'tfn': '999999999',
             'date_of_birth': date(2000, 1, 1),
             'pay_period_start': date(2026, 9, 8),

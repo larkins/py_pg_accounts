@@ -1,6 +1,6 @@
 """PayEventLine — itemised breakdown of a pay_event.
 
-For Jessica today this is a 3-line breakdown (Gross / PAYG / Net). For
+For Alice Smith today this is a 3-line breakdown (Gross / PAYG / Net). For
 future employees: allowances, leave, overtime, deductions.
 
 Headline amounts on pay_events remain the source of truth.

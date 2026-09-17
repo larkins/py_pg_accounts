@@ -159,7 +159,7 @@ class TestPIIRoundTrip:
 class TestBackfillIdempotent:  # noqa: D400
     """Stub class retained so any old test references don't error.
     The associated backfill script (scripts/backfill_jessica_pay_events.py)
-    was a one-time migration tool for migrating Jessica's existing
+    was a one-time migration tool for migrating Alice Smith's existing
     payslips — it has been removed from the public repo since the data
     migration is complete. Re-add idempotency tests here if a similar
     migration script is needed for another employer."""
