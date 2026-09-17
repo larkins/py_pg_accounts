@@ -7,8 +7,8 @@ to expense, invoice, customer, business profile, bank transaction, BAS
 lodgement, statement of account, payroll, and OCR queue management.
 
 Usage:
-    from skills.accounting_skill import AccountingSkill
-    skill = AccountingSkill(api_key="your-api-key", base_url="http://127.0.0.1:5061")
+    from skills.py_pg_accounts.accounting_skill import AccountingSkill
+    skill = AccountingSkill(api_key="your-api-key")  # base_url defaults to http://127.0.0.1:5061
     result = skill.create_expense(vendor_name="Office Supplies", ex_gst_amount=100.00)
 
 Documentation:
