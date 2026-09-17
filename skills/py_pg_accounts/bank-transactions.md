@@ -67,9 +67,9 @@ result = skill.create_bank_transaction(
     transaction_id="CTBAAUSNXXXN20260831050082279008000",
     reference="5C1A4C6F - SOFTWARE",
     method="osko",
-    payer_name="ENP FITOUTS PTY LTD",
-    payer_account="084-004 138394380",
-    notes="Weekly invoice INV-5C1A4C6F paid via Osko",
+    payer_name="EXAMPLE CUSTOMER PTY LTD",
+    payer_account="000-000 000000000",
+    notes="Weekly invoice INV-XXXXXXXX paid via Osko",
 )
 # result['message'] == 'Bank transaction recorded and invoice marked paid'
 # result['invoice']['status'] == 'paid'
@@ -87,8 +87,8 @@ result = skill.create_bank_transaction(
     transaction_id="CTBAAUSNXXXN20260831050082279008000",
     reference="5C1A4C6F - SOFTWARE",
     method="osko",
-    payer_name="ENP FITOUTS PTY LTD",
-    payer_account="084-004 138394380",
+    payer_name="EXAMPLE CUSTOMER PTY LTD",
+    payer_account="000-000 000000000",
     notes="Backfilled: invoice was already marked paid via legacy /mark-paid endpoint.",
 )
 # result['message'] == 'Bank transaction recorded (linked to already-paid invoice)'

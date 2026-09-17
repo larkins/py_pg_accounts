@@ -834,7 +834,7 @@ class AccountingSkill:
             transaction_id: Bank-side txn ID, e.g. 'CTBAAUSNXXXN...'
             reference: Payer-supplied reference, e.g. 'INV-XXX - SOFTWARE'
             method: One of 'osko' | 'bpay' | 'direct_credit' | 'cheque' | 'cash' | 'other'
-            payer_name: Who sent the money, e.g. 'ENP FITOUTS PTY LTD'
+            payer_name: Who sent the money, e.g. 'EXAMPLE CUSTOMER PTY LTD'
             payer_account: Payer-side account if known
             currency: ISO-4217 3-char, default 'AUD'
             settled_at: Precise ISO-8601 timestamp if known
