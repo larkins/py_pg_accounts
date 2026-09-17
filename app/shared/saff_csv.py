@@ -43,12 +43,13 @@ from datetime import date
 
 
 # AustralianSuper identifiers (used for the payee/receiver context).
-# Source: ATO Fund USI/SPIN Lookup Table (https://softwaredevelopers.ato.gov.au/contributions)
-# These are the publicly-known identifiers for the AustralianSuper fund:
-#   ABN: 65 714 394 864
-#   USI: 65714394864012
-AUSTRALIAN_SUPER_ABN = '65714394864'
-AUSTRALIAN_SUPER_USI = '65714394864012'
+# Confirmed via AusSuper's portal fund lookup on 2026-09-17 (Michael
+# entered '65 714 394 864' in the lookup tool and saw the corrected
+# values: ABN ends in 898, USI is STA0100AU). NOTE: do NOT trust
+# external AI-generated identifiers — the numbers originally here were
+# wrong (last two digits of the ABN were off; USI was fabricated).
+AUSTRALIAN_SUPER_ABN = '65714394898'
+AUSTRALIAN_SUPER_USI = 'STA0100AU'
 
 
 # SAFF column layout. This is a pragmatic subset of the ATO Standard's
@@ -86,19 +87,20 @@ COLUMNS = (
     'PayeeTargetElectronicServiceAddress',  # U: blank (not an SMSF)
 
     # --- Employee section (AufEmp / common SuperStream elements).
-    'TFN',                             # — not yet stored, blank for now
+    'TFN',                             # encrypted at rest, plaintext here
     'FamilyName',                      # employee family name
     'GivenName',                       # employee given name
     'OtherGivenName',                  # employee middle name (blank)
-    'DateOfBirth',                     # YYYY-MM-DD (blank — not yet stored)
+    'DateOfBirth',                     # YYYY-MM-DD (added 2026-09-17)
+    'Sex',                             # M / F / X — ATO standard code (added 2026-09-17)
     'EmploymentStartDate',             # YYYY-MM-DD (not stored; blank)
-    'AddressLine1',                    # not stored; blank
-    'AddressLine2',                    # not stored; blank
-    'Suburb',                          # not stored; blank
-    'State',                           # not stored; blank
-    'Postcode',                        # not stored; blank
-    'EmailAddress',                    # not stored; blank
-    'PhoneNumber',                     # not stored; blank
+    'AddressLine1',                    # street address (added 2026-09-17)
+    'AddressLine2',                    # blank (added 2026-09-17)
+    'Suburb',                          # locality (added 2026-09-17)
+    'State',                           # 2-3 char state code (added 2026-09-17)
+    'Postcode',                        # 4 digit AU postcode (added 2026-09-17)
+    'EmailAddress',                    # blank — not stored on Employee
+    'PhoneNumber',                     # mobile/landline (added 2026-09-17)
 
     # --- Contribution details (the parts AustralianSuper cares about).
     'PayrollNumberIdentifier',         # internal batch id (we use period end)
@@ -279,14 +281,15 @@ def build_saff_csv(rows, file_id=None, options=None):
             'GivenName': row.get('given_name', ''),
             'OtherGivenName': '',
             'DateOfBirth': _format_date_iso(row.get('date_of_birth')),
+            'Sex': row.get('sex', ''),
             'EmploymentStartDate': _format_date_iso(row.get('employment_start_date')),
-            'AddressLine1': '',
-            'AddressLine2': '',
-            'Suburb': '',
-            'State': '',
-            'Postcode': '',
+            'AddressLine1': row.get('address_line1', ''),
+            'AddressLine2': row.get('address_line2', ''),
+            'Suburb': row.get('city', ''),
+            'State': row.get('state', ''),
+            'Postcode': row.get('postcode', ''),
             'EmailAddress': '',
-            'PhoneNumber': '',
+            'PhoneNumber': row.get('phone', ''),
             'PayrollNumberIdentifier': _format_date_iso(row.get('pay_period_end')).replace('-', ''),
             'FundMemberNumber': row.get('member_number', ''),
             'PayPeriodStartDate': _format_date_iso(row.get('pay_period_start')),
