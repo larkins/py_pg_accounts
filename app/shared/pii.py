@@ -102,7 +102,8 @@ def decrypt_pii(ciphertext):
 def mask_tfn(plain):
     """Return `*** *** 250` style (last 3 digits visible).
 
-    Tolerates the common formats `107 075 250` / `***REMOVED***` / `107-075-250`.
+    Tolerates the common Australian TFN input formats (with spaces, hyphens,
+    dots — see ATO convention for TFN formatting).
     """
     if plain is None:
         return None

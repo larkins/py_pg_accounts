@@ -170,10 +170,13 @@ def build_mapped_csv(rows, employer_id=None):
             'Locality Name Text': row.get('city', ''),
             'State or Territory Code': row.get('state', ''),
             'Postcode Text': row.get('postcode', ''),
-            'Fund Details / Organisational Name Text': row.get('fund_name', 'AustralianSuper'),
-            'ABN': '65714394898',  # bare 11 digits, no spaces — verified via AusSuper fund lookup 2026-09-17
-            'USI': 'STA0100AU',
-            'Fund ID (ABN/USI)': 'STA0100AU',  # use USI (more identifying than ABN)
+            'Fund Details / Organisational Name Text': row.get(
+                'fund_name',
+                os.environ.get('DEFAULT_FUND_NAME', 'AustralianSuper'),
+            ),
+            'ABN': os.environ.get('AUSTRALIAN_SUPER_ABN', '65714394898'),
+            'USI': os.environ.get('AUSTRALIAN_SUPER_USI', 'STA0100AU'),
+            'Fund ID (ABN/USI)': os.environ.get('AUSTRALIAN_SUPER_USI', 'STA0100AU'),
             'Pay Period Start Date': _format_date_iso(row.get('pay_period_start')),
             'Pay Period End Date': _format_date_iso(row.get('pay_period_end')),
             'Transaction Date': _format_date_iso(row.get('transaction_date')),

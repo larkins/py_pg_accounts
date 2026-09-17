@@ -853,12 +853,20 @@ def send_payslip(pay_event_id):
 
     from app.shared.pdf import generate_payslip_pdf as _gen_for_send
     mail_results = []
+    mail_from = current_app.config.get(
+        'MAIL_FROM_ADDRESS',
+        os.environ.get('MAIL_FROM_ADDRESS', ''),
+    )
+    mail_from_domain = current_app.config.get(
+        'MAIL_FROM_DOMAIN',
+        os.environ.get('MAIL_FROM_DOMAIN', ''),
+    )
     for kind, email_addr in targets:
         d = PayslipDelivery(
             pay_event_id=pe.id,
             recipient_email=email_addr,
             recipient_kind=kind,
-            sent_from='evie@peristyle.ai',
+            sent_from=mail_from,
             subject=subject,
             attachment_count=1,
             attachment_paths=[os.path.relpath(pdf_path, os.path.abspath(
@@ -879,7 +887,7 @@ def send_payslip(pay_event_id):
             )
             mail_user = _ca.config.get(
                 'MAIL_SERVER_USER',
-                os.environ.get('MAIL_SERVER_USER', 'evie@peristyle.ai'),
+                os.environ.get('MAIL_SERVER_USER', ''),
             )
             mail_pass = _ca.config.get(
                 'MAIL_SERVER_PASSWORD',
@@ -909,11 +917,11 @@ def send_payslip(pay_event_id):
             from email.message import EmailMessage as _EmailMessage
             from email.utils import formatdate as _formatdate, make_msgid as _make_msgid
             _msg = _EmailMessage()
-            _msg['From'] = 'evie@peristyle.ai'
+            _msg['From'] = mail_from
             _msg['To'] = email_addr
             _msg['Subject'] = subject
             _msg['Date'] = _formatdate(localtime=True)
-            _msg['Message-ID'] = _make_msgid(domain='peristyle.ai')
+            _msg['Message-ID'] = _make_msgid(domain=mail_from_domain or 'localhost')
             _msg.set_content(body)
             _msg.add_attachment(pdf_bytes, maintype='application', subtype='pdf',
                                 filename=os.path.basename(pdf_path))

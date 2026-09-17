@@ -584,11 +584,10 @@ def generate_statement_of_account_pdf(user, customer, invoices, as_of_date):
 
 def generate_payslip_pdf(user, employee, pay_event, lines=None, business_name=None, abn=None, address=None):
     """
-    Generate a payslip PDF (server-side replacement for the fpdf2 scripts in
-    ~/evie/payroll/jessica-paul/). Uses ReportLab (already a dep) rather than
-    fpdf2 because ReportLab is already loaded in the app process.
+    Generate a payslip PDF using ReportLab (already a dep and already
+    loaded in the app process, so no extra process spawn).
 
-    Layout mirrors the manual payslips Jessica has been receiving:
+    Layout mirrors the original payslip template:
       - PAY SLIP title
       - employer header (business name / ABN / address / phone / email)
       - employee/pay block (name, position, TFN, pay period, payment date, pay frequency)

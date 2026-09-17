@@ -39,6 +39,7 @@ Known limitations:
 
 import csv
 import io
+import os
 from datetime import date
 
 
@@ -48,8 +49,8 @@ from datetime import date
 # values: ABN ends in 898, USI is STA0100AU). NOTE: do NOT trust
 # external AI-generated identifiers — the numbers originally here were
 # wrong (last two digits of the ABN were off; USI was fabricated).
-AUSTRALIAN_SUPER_ABN = '65714394898'
-AUSTRALIAN_SUPER_USI = 'STA0100AU'
+AUSTRALIAN_SUPER_ABN = os.environ.get('AUSTRALIAN_SUPER_ABN', '65714394898')
+AUSTRALIAN_SUPER_USI = os.environ.get('AUSTRALIAN_SUPER_USI', 'STA0100AU')
 
 
 # SAFF column layout. This is a pragmatic subset of the ATO Standard's
@@ -133,8 +134,9 @@ def _normalize_tfn(value):
     """Normalise a TFN to 9 bare digits (no spaces, hyphens, or dots).
 
     SAFF best practice is bare 9 digits. We accept any reasonable input shape
-    ('107 075 250', '107-075-250', '***REMOVED***') and emit '***REMOVED***'. Returns
-    blank if the value is missing or has the wrong number of digits.
+    (spaces, hyphens, or dots — see ATO convention for TFN formatting) and
+    emit bare digits. Returns blank if the value is missing or has the wrong
+    number of digits.
     """
     if value is None or value == '':
         return ''

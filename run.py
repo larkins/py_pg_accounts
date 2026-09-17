@@ -129,8 +129,10 @@ def main():
                         help='API server port (default: 5061)')
     parser.add_argument('--hmi-port', type=int, default=5062,
                         help='HMI server port (default: 5062)')
-    parser.add_argument('--host', default='192.168.4.44',
-                        help='Host address (default: 192.168.4.44)')
+    parser.add_argument('--host', default='127.0.0.1',
+                        help='Host address (default: 127.0.0.1). '
+                             'Set to 0.0.0.0 to bind on all interfaces, '
+                             'or override per-install via the API_HOST env var.')
 
     args = parser.parse_args()
 
