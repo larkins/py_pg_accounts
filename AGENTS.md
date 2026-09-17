@@ -10,21 +10,24 @@ pip install -r requirements.txt
 
 # Configure environment
 cp .env.example .env
-cp config.yaml.example config.yaml
 # Edit .env with database credentials and API keys
 
 # Run database migrations (auto-creates tables)
 python run.py --init-db
 
-# Start servers
-python run.py --host 192.168.4.44
+# Start servers (binds to 127.0.0.1 by default — override with --host for LAN)
+python run.py
 ```
+
+The API server defaults to port **5061** and the HMI to port **5062**. Both bind to `127.0.0.1` (loopback) by default. For LAN/hosted deployments, pass `--host=<your-ip>` (e.g. `--host=0.0.0.0` to bind on all interfaces).
+
+Throughout this document, `localhost:5061` is used as the API base URL in examples — substitute your actual host for remote deployments.
 
 ## Architecture
 
 ### Servers
-- **API Server**: `192.168.4.44:5061` - REST API for agent access
-- **HMI (Browser UI)**: `192.168.4.44:5062` - Human interface for manual data entry
+- **API Server**: `localhost:5061` (REST API for agent access)
+- **HMI (Browser UI)**: `localhost:5062` (Human interface for manual data entry)
 
 ### Key Components
 1. **Flask Application**: Python web framework
@@ -44,6 +47,8 @@ python run.py --host 192.168.4.44
 ```python
 headers = {"X-API-Key": "user_api_key_here"}
 ```
+
+The same API endpoints also accept HMI session cookies (set after login) — so the same routes work for both programmatic clients and the browser UI.
 
 ### For HMI Access
 - Standard email/password login at `/login`
@@ -141,14 +146,12 @@ Receipts uploaded via PWA are processed asynchronously:
 4. Extracted data updates expense record
 5. Job status set to "completed" (auto) or "failed" (manual review needed)
 
-### Tesseract Pipeline (2026-08-04 refactor)
-
-The previous vision LLM (`gemma4` at `192.168.4.41:11434`) is gone. New pipeline:
+### Tesseract Pipeline
 
 - **Stage 1**: tesseract OCR (local) — image → raw text
 - **Stage 2**: regex parser (local) — raw text → {vendor, date, amounts, gst}
 - **Stage 3**: manual review (agent, optional) — if auto-parse fails, image + raw
-  text saved to `ocr_queue.extracted_data` for an agent (Evie) to pick up via
+  text saved to `ocr_queue.extracted_data` for an agent to pick up via
   the `image` tool and PATCH the expense back via the API.
 
 ### System Dependencies
@@ -186,8 +189,8 @@ python processes/ocr_processor.py --config config.yaml --once
 ### Manual Review Workflow
 
 When tesseract can't parse a receipt, the job is marked `failed` and the raw
-OCR text is saved to `ocr_queue.extracted_data.raw_text`. An agent (Evie)
-picks these up via the API:
+OCR text is saved to `ocr_queue.extracted_data.raw_text`. An agent picks
+these up via the API:
 
 ```bash
 # List jobs needing manual review
@@ -225,9 +228,11 @@ PUT auto-clears `requires_review=false` when the supplied vendor_name is real
 
 ## Common Operations
 
+All examples below use `localhost:5061` as the API base URL — substitute your actual host for remote deployments (e.g. `https://accounts.example.com`).
+
 ### Create an Expense (via API)
 ```bash
-curl -X POST http://192.168.4.44:5061/api/expenses \
+curl -X POST http://localhost:5061/api/expenses \
   -H "Content-Type: application/json" \
   -H "X-API-Key: your_api_key" \
   -d '{
@@ -241,19 +246,19 @@ curl -X POST http://192.168.4.44:5061/api/expenses \
 
 ### List Expenses
 ```bash
-curl http://192.168.4.44:5061/api/expenses \
+curl http://localhost:5061/api/expenses \
   -H "X-API-Key: your_api_key"
 ```
 
 ### Generate Report
 ```bash
-curl "http://192.168.4.44:5061/api/reports/quarterly-bas?quarter=1&year=2024" \
+curl "http://localhost:5061/api/reports/quarterly-bas?quarter=1&year=2024" \
   -H "X-API-Key: your_api_key"
 ```
 
 ### Create a Customer
 ```bash
-curl -X POST http://192.168.4.44:5061/api/customers \
+curl -X POST http://localhost:5061/api/customers \
   -H "Content-Type: application/json" \
   -H "X-API-Key: your_api_key" \
   -d '{
@@ -268,7 +273,7 @@ curl -X POST http://192.168.4.44:5061/api/customers \
 
 ### Create an Invoice (requires customer_id)
 ```bash
-curl -X POST http://192.168.4.44:5061/api/invoices \
+curl -X POST http://localhost:5061/api/invoices \
   -H "Content-Type: application/json" \
   -H "X-API-Key: your_api_key" \
   -d '{
@@ -283,13 +288,13 @@ curl -X POST http://192.168.4.44:5061/api/invoices \
 
 ### Download Invoice PDF
 ```bash
-curl -o invoice.pdf "http://192.168.4.44:5061/api/invoices/<invoice-id>/pdf" \
+curl -o invoice.pdf "http://localhost:5061/api/invoices/<invoice-id>/pdf" \
   -H "X-API-Key: your_api_key"
 ```
 
 ### Update Business Profile
 ```bash
-curl -X PUT http://192.168.4.44:5061/api/auth/business \
+curl -X PUT http://localhost:5061/api/auth/business \
   -H "Content-Type: application/json" \
   -H "X-API-Key: your_api_key" \
   -d '{
@@ -308,7 +313,7 @@ curl -X PUT http://192.168.4.44:5061/api/auth/business \
 
 ### Upload Business Logo
 ```bash
-curl -X POST http://192.168.4.44:5061/api/auth/logo \
+curl -X POST http://localhost:5061/api/auth/logo \
   -H "X-API-Key: your_api_key" \
   -F "file=@/path/to/logo.png"
 ```
@@ -333,8 +338,7 @@ py_pg_accounts/
 │   └── ocr_processor.py     # OCR queue worker
 ├── schema/
 │   └── init.sql             # Database schema
-├── config.yaml              # Configuration
-├── .env                     # Secrets
+├── .env                     # Secrets (git-ignored)
 ├── run.py                   # Entry point
 └── venv/                    # Python environment
 ```
@@ -345,7 +349,7 @@ py_pg_accounts/
 
 2. **OCR Processing**: Receipts uploaded via PWA require OCR processing. The expense will show "Pending OCR" until processed.
 
-3. **OCR Pipeline**: Local tesseract + regex parser. Previous vision LLM (gemma4 at 192.168.4.41:11434) is gone as of 2026-08-04. Manual review of low-confidence parses is done by an agent (Evie) via its native vision tool.
+3. **OCR Pipeline**: Local tesseract + regex parser. Manual review of low-confidence parses can be done by an agent with a native vision tool via the API.
 
 4. **Financial Year**: Australian (July 1 - June 30)
 
