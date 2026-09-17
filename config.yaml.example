@@ -6,7 +6,7 @@ database:
   password: "your_password_here"
 
 app:
-  host: "192.168.4.44"
+  host: "127.0.0.1"
   api_port: 5061
   hmi_port: 5062
   secret_key: "change-me-in-production-use-strong-random-key"

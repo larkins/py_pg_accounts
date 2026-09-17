@@ -9,7 +9,8 @@ from skills.accounting_skill import AccountingSkill
 
 skill = AccountingSkill(
     api_key="your-api-key-here",
-    base_url="http://192.168.4.44:5061"  # Optional, defaults to local server
+    # base_url is optional — defaults to http://127.0.0.1:5061.
+    # Override via the `base_url=` kwarg or the PY_PG_ACCOUNTS_BASE_URL env var.
 )
 
 # Create an expense
@@ -506,7 +507,7 @@ All dates use ISO 8601 format: `YYYY-MM-DD`
 
 ## Architecture Notes
 
-- **Base URL**: `http://192.168.4.44:5061` (default; override with `base_url` parameter)
+- **Base URL**: `http://127.0.0.1:5061` (default; override with `base_url` parameter or `PY_PG_ACCOUNTS_BASE_URL` env var)
 - **Authentication**: `X-API-Key` header
 - **Response Format**: All responses are JSON
 - **PDF Generation**: Server-side using ReportLab

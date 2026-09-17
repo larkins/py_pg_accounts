@@ -7,19 +7,19 @@ Open-source accounting software built with Python, Flask, and PostgreSQL. Design
 
 ### Four Main Interface Components
 
-1. **API Server** (Flask on `192.168.4.44:5061`)
+1. **API Server** (Flask on `${API_HOST:127.0.0.1}:5061`)
    - Serves persistent AI agent interactions via REST API
    - Provides skill-based interface for expense/invoice CRUD operations
    - Supports file uploads (images, PDFs)
    - Local network only
 
-2. **Browser HMI** (Flask on `192.168.4.44:5062`)
+2. **Browser HMI** (Flask on `${API_HOST:127.0.0.1}:5062`)
    - Human-machine interface for manual data entry
    - Full CRUD for expenses and invoices
    - Report generation (Quarterly P&L with GST, Yearly P&L)
    - Local network only
 
-3. **PWA** (Flask on `/pwa` route under HMI - `192.168.4.44:5062/pwa`)
+3. **PWA** (Flask on `/pwa` route under HMI - `${API_HOST:127.0.0.1}:5062/pwa`)
    - Progressive Web App for receipt capture
    - Mobile-friendly interface for taking photos of receipts
    - Upload directly as new expenses
@@ -283,17 +283,15 @@ database:
   user: postgres
 
 app:
-  host: "192.168.4.44"
+  host: "127.0.0.1"  # override via API_HOST env var for LAN binding
   api_port: 5061
   hmi_port: 5062
   secret_key: "change-me-in-production"
   upload_folder: "uploads"
   max_content_length: 10485760  # 10MB
 
-vision:
-  ollama_host: "http://192.168.4.41:11434"
-  model: "gemma4:31b"
-  timeout: 2100.0
+# vision section removed 2026-08-04 — was a local Ollama-hosted gemma4:31b
+# endpoint that has since been retired. OCR now uses local tesseract.
 
 accounting:
   default_gst_type: 0.1
@@ -417,9 +415,10 @@ Wants=postgresql.service network-online.target
 [Service]
 Type=simple
 Environment="PATH=%h/py_pg_accounts/venv/bin:/usr/local/bin:/usr/bin:/bin"
+EnvironmentFile=-%h/.env   # secrets + API_HOST (optional)
 WorkingDirectory=%h/py_pg_accounts
 ExecStartPre=/bin/sleep 5
-ExecStart=%h/py_pg_accounts/venv/bin/python3 run.py --host 192.168.4.44
+ExecStart=%h/py_pg_accounts/venv/bin/python3 run.py   # --host defaults to 127.0.0.1
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal

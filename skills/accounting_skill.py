@@ -7,7 +7,7 @@ to expense, invoice, customer, and business profile management.
 
 Usage:
     from skills.accounting_skill import AccountingSkill
-    skill = AccountingSkill(api_key="your-api-key", base_url="http://192.168.4.44:5061")
+    skill = AccountingSkill(api_key="your-api-key")  # uses default BASE_URL
     result = skill.create_expense(vendor_name="Office Supplies", ex_gst_amount=100.00)
 """
 
@@ -19,7 +19,11 @@ from decimal import Decimal
 
 
 class AccountingSkill:
-    BASE_URL = "http://192.168.4.44:5061"
+    # Default base URL — override with `base_url=...` on the constructor or
+    # the `PY_PG_ACCOUNTS_BASE_URL` environment variable. The default points
+    # at the loopback so a fresh install just works; production should set
+    # the env var to the public hostname (e.g. https://accounts.example.com).
+    BASE_URL = os.environ.get("PY_PG_ACCOUNTS_BASE_URL", "http://127.0.0.1:5061")
 
     def __init__(self, api_key: str, base_url: Optional[str] = None):
         self.api_key = api_key

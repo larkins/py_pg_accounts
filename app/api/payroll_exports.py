@@ -22,9 +22,7 @@ log entry with `source='api'` so we can audit later.
 Date range: `from_date` and `to_date` filter on `payment_date`. If
 omitted, defaults to "all finalized pay events".
 
-History: added 2026-09-17 per Michael's request. Currently one employee
-(Jessica Paul); same code path will work for ENP Fitouts once they
-onboard their employees.
+History: added 2026-09-17 per Michael's request.
 """
 
 import io

@@ -2,8 +2,8 @@
 """
 OCR Queue Processor (2026-08-04 refactor)
 
-Previous pipeline: vision LLM (gemma4) at 192.168.4.41:11434 — host repurposed,
-endpoint gone. New pipeline is local tesseract + Australian-receipt regex parsing.
+Previous pipeline: local vision LLM (gemma4) — endpoint retired.
+New pipeline: local tesseract + Australian-receipt regex parsing.
 
 Two-stage processing:
 
