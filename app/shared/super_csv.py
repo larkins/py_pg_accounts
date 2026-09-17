@@ -31,8 +31,7 @@ to debug and round-trip. XLSX is a future enhancement.
 
 History: added 2026-09-17 per Michael's request for an exportable
 contribution file that the accountant can upload to AustralianSuper's
-employer portal. Currently there is one employee (Jessica Paul); same
-code path works for ENP Fitouts employees when they onboard.
+employer portal.
 """
 
 import csv
