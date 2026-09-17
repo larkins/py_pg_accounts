@@ -243,8 +243,8 @@ class TestBusinessUpdateStructured:
         # Cleanup so the test is repeatable
         with client.application.app_context():
             u = User.query.filter_by(email='evie@peristyle.ai').first()
-            u.address_line1 = '5 Fisher St'
-            u.city = 'Collingwood Park'
+            u.address_line1 = '1 Example St'
+            u.city = 'Brisbane'
             u.state = 'QLD'
-            u.postcode = '4301'
+            u.postcode = '4000'
             db.session.commit()

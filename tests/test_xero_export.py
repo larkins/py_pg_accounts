@@ -153,12 +153,12 @@ class TestRenderAddress:
     def test_renders_user_with_address_country(self):
         from types import SimpleNamespace
         u = SimpleNamespace(
-            address_line1='5 Fisher St', address_line2=None,
-            city='Collingwood Park', state='QLD', postcode='4301',
+            address_line1='1 Example St', address_line2=None,
+            city='Brisbane', state='QLD', postcode='4000',
             address_country='Australia',
             country='AU',  # 2-letter locale — must NOT be picked as address country
         )
-        assert render_address(u) == '5 Fisher St\nCollingwood Park QLD 4301\nAustralia'
+        assert render_address(u) == '1 Example St\nBrisbane QLD 4000\nAustralia'
 
     def test_none_returns_empty(self):
         assert render_address(None) == ''

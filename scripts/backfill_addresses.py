@@ -16,9 +16,8 @@ of archived data, but new installs should skip it entirely.
 Why it exists (2026-09-17): addresses used to be a single free-text string.
 The Xero CSV export work showed how lossy that was, so we added structured
 columns and a backfill to populate them from existing data. The backfill was
-run on the original install: 2 customers + 1
-user successfully split. Evie's user address (`5 Fisher St Collingwood Park
-QLD 4301`) was fixed by hand because the splitter couldn't disambiguate
+run on the original install: 2 customers + 1 user successfully split. One
+user record was fixed by hand because the splitter couldn't disambiguate
 without a comma separator.
 
 Usage (legacy installs only):
