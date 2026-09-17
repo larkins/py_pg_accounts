@@ -12,8 +12,71 @@ from app.models.activity_log import ActivityLog
 from app.models.customer import Customer
 from app.shared.decorators import api_key_required, log_activity
 from app.shared.validators import validate_decimal, validate_date_string, validate_gst_type, validate_uuid
+from app.shared.address import validate_state, validate_postcode
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
+
+
+# ---------------------------------------------------------------------------
+# Address payload helpers (added 2026-09-17 alongside the structured-address
+# refactor; see app/shared/address.py and the Xero export for context).
+# ---------------------------------------------------------------------------
+
+_ADDRESS_FIELDS = ('address_line1', 'address_line2', 'city', 'state', 'postcode', 'country')
+
+
+def _any_address_field(data):
+    return any(field in data for field in _ADDRESS_FIELDS)
+
+
+def _validate_address_payload(data, country_default='Australia'):
+    """Return an error string if the address fields in `data` are invalid,
+    otherwise None.
+
+    The `country` key (if present) is used for state/postcode validation.
+    Falls back to country_default if not provided — for Australia that means
+    state must be one of NSW/VIC/QLD/SA/WA/TAS/ACT/NT and postcode must be
+    4 digits.
+    """
+    country = data.get('country') or country_default
+    if 'state' in data:
+        ok, _result = validate_state(data['state'], country=country)
+        if not ok:
+            return _result
+    if 'postcode' in data:
+        ok, _result = validate_postcode(data['postcode'], country=country)
+        if not ok:
+            return _result
+    return None
+
+
+def _validate_and_normalize_address(data, country_default='Australia', country_field='country'):
+    """Like _validate_address_payload, but also returns the normalised form
+    of every address field present in `data` (uppercase state, stripped
+    postcode, etc.). Caller should use the normalised form when persisting.
+
+    Returns (error_string_or_None, normalised_dict).
+
+    `country_field` lets callers with a differently-named country column
+    (e.g. user.address_country) pass the right key name for normalisation
+    purposes.
+    """
+    country = data.get(country_field) or country_default
+    normalised = {}
+
+    if 'state' in data:
+        ok, result = validate_state(data['state'], country=country)
+        if not ok:
+            return result, {}
+        normalised['state'] = result
+
+    if 'postcode' in data:
+        ok, result = validate_postcode(data['postcode'], country=country)
+        if not ok:
+            return result, {}
+        normalised['postcode'] = result
+
+    return None, normalised
 
 
 @api_bp.route('/auth/register', methods=['POST'])
@@ -293,6 +356,7 @@ def customer_statement_json(customer_id):
             'balance': str(bal) if bal > 0 else '0.00',
             'status': status_disp,
             'status_raw': inv.status,
+            'reminder_count': inv.reminders.count() if hasattr(inv, 'reminders') else 0,
         })
 
     return jsonify({
@@ -351,15 +415,37 @@ def create_customer():
     if not name:
         return jsonify({'error': 'Name is required'}), 400
 
+    # Reject the legacy free-text `address` field outright. 2026-09-17
+    # refactor: the legacy column has been dropped, so callers MUST send
+    # structured fields. Helps avoid silent drift between denormalised blob
+    # and structured columns.
+    if 'address' in data:
+        return jsonify({
+            'error': (
+                'The legacy `address` field is no longer supported. '
+                'Send structured fields instead: address_line1, city, state, postcode, country.'
+            )
+        }), 400
+
+    addr_error, normalised_addr = _validate_and_normalize_address(data, country_default='Australia')
+    if addr_error:
+        return jsonify({'error': addr_error}), 400
+
     customer = Customer(
         name=name,
         contact_name=data.get('contact_name'),
-        address=data.get('address'),
+        address_line1=data.get('address_line1'),
+        address_line2=data.get('address_line2'),
+        city=data.get('city'),
+        state=normalised_addr.get('state', data.get('state')),
+        postcode=normalised_addr.get('postcode', data.get('postcode')),
+        country=data.get('country', 'Australia'),
         contact_email=data.get('contact_email'),
         abn=data.get('abn'),
         contact_number=data.get('contact_number'),
-        gst=data.get('gst', True)
+        gst=data.get('gst', True),
     )
+
     db.session.add(customer)
     db.session.commit()
 
@@ -399,8 +485,24 @@ def update_customer(customer_id):
         customer.name = new_name
     if 'contact_name' in data:
         customer.contact_name = data['contact_name']
+
+    # Address — structured only (the legacy `address` field was removed
+    # in the 2026-09-17 refactor).
     if 'address' in data:
-        customer.address = data['address']
+        return jsonify({
+            'error': (
+                'The legacy `address` field is no longer supported. '
+                'Send structured fields instead: address_line1, city, state, postcode, country.'
+            )
+        }), 400
+
+    addr_error, normalised_addr = _validate_and_normalize_address(data, country_default='Australia')
+    if addr_error:
+        return jsonify({'error': addr_error}), 400
+    for field in ('address_line1', 'address_line2', 'city', 'state', 'postcode', 'country'):
+        if field in data:
+            setattr(customer, field, normalised_addr.get(field, data[field]))
+
     if 'contact_email' in data:
         customer.contact_email = data['contact_email']
     if 'abn' in data:
@@ -1248,8 +1350,28 @@ def update_business_details():
         user.business_name = data['business_name']
     if 'abn' in data:
         user.abn = data['abn']
+
+    # Address — structured only (the legacy `address` field was removed
+    # in the 2026-09-17 refactor). Note: user.address_country (the
+    # address's country) is distinct from user.country (the user's locale,
+    # 2-letter code).
     if 'address' in data:
-        user.address = data['address']
+        return jsonify({
+            'error': (
+                'The legacy `address` field is no longer supported. '
+                'Send structured fields instead: address_line1, city, state, postcode, address_country.'
+            )
+        }), 400
+
+    addr_error, normalised_addr = _validate_and_normalize_address(
+        data, country_default='Australia', country_field='address_country',
+    )
+    if addr_error:
+        return jsonify({'error': addr_error}), 400
+    for field in ('address_line1', 'address_line2', 'city', 'state', 'postcode', 'address_country'):
+        if field in data:
+            setattr(user, field, normalised_addr.get(field, data[field]))
+
     if 'contact_email' in data:
         user.contact_email = data['contact_email']
     if 'contact_number' in data:

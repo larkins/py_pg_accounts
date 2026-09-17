@@ -5,12 +5,17 @@
 -- automatically by db.create_all() on app startup (see app/models/*), but
 -- every committed model MUST also be reflected here so fresh installs from
 -- scratch have the full schema. Last synced with live DB on 2026-09-07
--- (added bas_lodgements from 01cc090 + bank_transactions from 74eef7b).
+-- (added bas_lodgements from 01cc090 + bank_transactions from 74eef7b +
+-- invoice_reminders + pending_payment_reconciliations from 08 Sep 2026).
 
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- Users table
+-- Users table (the business owner; one per business)
+-- 2026-09-17: same address refactor as customers — structured fields only
+-- (legacy free-text `address` column dropped same day). Note: `country` is
+-- the user's locale (2-letter ISO code: 'AU', 'US', etc.); `address_country`
+-- is the address's country name ('Australia', 'United States', etc.).
 CREATE TABLE IF NOT EXISTS users (
     id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v4()::text,
     email VARCHAR(255) UNIQUE NOT NULL,
@@ -21,7 +26,13 @@ CREATE TABLE IF NOT EXISTS users (
     verification_token VARCHAR(64),
     business_name VARCHAR(255),
     abn VARCHAR(20),
-    address TEXT,
+    -- Structured address fields (preferred for writes & integrations)
+    address_line1 VARCHAR(255),
+    address_line2 VARCHAR(255),
+    city VARCHAR(100),
+    state VARCHAR(50),
+    postcode VARCHAR(20),
+    address_country VARCHAR(100) NOT NULL DEFAULT 'Australia',
     contact_email VARCHAR(255),
     contact_number VARCHAR(50),
     logo_path VARCHAR(500),
@@ -74,11 +85,22 @@ CREATE INDEX IF NOT EXISTS idx_expenses_created_at ON expenses(created_at);
 CREATE INDEX IF NOT EXISTS idx_expenses_requires_review ON expenses(requires_review);
 
 -- Customers table (defined BEFORE invoices because invoices.customer_id FKs to it)
+-- 2026-09-17: address split into structured columns (line1, line2, city, state,
+-- postcode, country). 2026-09-17 (same day, second pass): the legacy
+-- free-text `address` TEXT column was DROPPED entirely to avoid drift
+-- between denormalised blob and structured columns. State is constrained to
+-- AU state abbreviations at the API layer (no DB CHECK so we don't block
+-- non-AU customers from countries we don't currently support).
 CREATE TABLE IF NOT EXISTS customers (
     id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v4()::text,
     name VARCHAR(255) NOT NULL,
     contact_name VARCHAR(255),
-    address TEXT,
+    address_line1 VARCHAR(255),
+    address_line2 VARCHAR(255),
+    city VARCHAR(100),
+    state VARCHAR(50),
+    postcode VARCHAR(20),
+    country VARCHAR(100) NOT NULL DEFAULT 'Australia',
     contact_email VARCHAR(255),
     abn VARCHAR(20),
     contact_number VARCHAR(50),
@@ -87,7 +109,40 @@ CREATE TABLE IF NOT EXISTS customers (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Idempotent migration for existing installs (added 2026-09-17).
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS address_line1 VARCHAR(255);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS address_line2 VARCHAR(255);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS city VARCHAR(100);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS state VARCHAR(50);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS postcode VARCHAR(20);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS country VARCHAR(100) NOT NULL DEFAULT 'Australia';
+-- Employees DOB column (added 2026-09-17 alongside SAFF work).
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS date_of_birth VARCHAR(500);
+-- Address + sex + phone (added 2026-09-17 for SAFF exports).
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS address_line1 VARCHAR(255);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS address_line2 VARCHAR(255);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS city VARCHAR(100);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS state VARCHAR(50);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS postcode VARCHAR(20);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS sex VARCHAR(10);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS phone VARCHAR(30);
+-- Legacy column dropped (added 2026-09-17 second pass). IF EXISTS so this
+-- is safe to run on already-clean installs.
+ALTER TABLE customers DROP COLUMN IF EXISTS address;
+
 CREATE INDEX IF NOT EXISTS idx_customers_name ON customers(name);
+CREATE INDEX IF NOT EXISTS idx_customers_state ON customers(state);
+CREATE INDEX IF NOT EXISTS idx_customers_postcode ON customers(postcode);
+
+-- Users address migration (same shape as customers above). Added 2026-09-17.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS address_line1 VARCHAR(255);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS address_line2 VARCHAR(255);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS city VARCHAR(100);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS state VARCHAR(50);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS postcode VARCHAR(20);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS address_country VARCHAR(100) NOT NULL DEFAULT 'Australia';
+-- Legacy column dropped (added 2026-09-17 second pass).
+ALTER TABLE users DROP COLUMN IF EXISTS address;
 
 -- Invoices table
 CREATE TABLE IF NOT EXISTS invoices (
@@ -197,6 +252,9 @@ CREATE TABLE IF NOT EXISTS employees (
     email_work VARCHAR(255),
     email_personal VARCHAR(255),
     tfn VARCHAR(500),
+    -- Date of birth (2026-09-17): encrypted at rest like the other PII
+    -- columns. Stored as ciphertext of an ISO date string ('YYYY-MM-DD').
+    date_of_birth VARCHAR(500),
     start_date DATE,
     end_date DATE,
     employment_status VARCHAR(20) NOT NULL DEFAULT 'active',
@@ -392,6 +450,95 @@ CREATE INDEX IF NOT EXISTS ix_bank_transactions_invoice_id
 CREATE INDEX IF NOT EXISTS ix_bank_transactions_transaction_date
     ON bank_transactions(transaction_date);
 
+-- Invoice reminders / statement-of-account log (added 2026-09-08).
+-- Tracks every outbound (or inbound) communication tied to a specific
+-- invoice, used for aged-receivable chasing and escalation history.
+-- A single statement-of-account email that covers multiple outstanding
+-- invoices produces one row per invoice, all sharing the same email_id.
+CREATE TABLE IF NOT EXISTS invoice_reminders (
+    id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v4()::text,
+    user_id VARCHAR(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    customer_id VARCHAR(36) NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    invoice_id VARCHAR(36) NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+
+    reminder_type VARCHAR(20) NOT NULL,                 -- 'statement' | 'chase' | 'dunning' | 'payment_reminder' | 'thank_you' | 'phone_call' | 'in_person' | 'other'
+    channel       VARCHAR(20) NOT NULL DEFAULT 'email', -- 'email' | 'phone' | 'sms' | 'in_person' | 'mail' | 'other'
+    direction     VARCHAR(10) NOT NULL DEFAULT 'outbound', -- 'outbound' | 'inbound'
+
+    sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    sent_by      VARCHAR(255),                          -- email/name of sender
+    sent_by_kind VARCHAR(20) NOT NULL DEFAULT 'human',  -- 'human' | 'evie' | 'cron' | 'system' | 'unknown'
+
+    email_id            VARCHAR(64),                    -- mail server message id; groups rows from one email event
+    pdf_attachment_path VARCHAR(500),
+
+    recipients   TEXT,
+    subject      VARCHAR(500),
+    body_excerpt TEXT,
+    notes        TEXT,
+
+    response_received_at TIMESTAMPTZ,
+    payment_received_at  TIMESTAMPTZ,
+    days_overdue_at_send INTEGER,                       -- snapshot of overdue state when reminder was sent
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS ix_invoice_reminders_user_id      ON invoice_reminders(user_id);
+CREATE INDEX IF NOT EXISTS ix_invoice_reminders_customer_id  ON invoice_reminders(customer_id);
+CREATE INDEX IF NOT EXISTS ix_invoice_reminders_invoice_id   ON invoice_reminders(invoice_id);
+CREATE INDEX IF NOT EXISTS ix_invoice_reminders_sent_at      ON invoice_reminders(sent_at);
+CREATE INDEX IF NOT EXISTS ix_invoice_reminders_email_id     ON invoice_reminders(email_id);
+CREATE INDEX IF NOT EXISTS ix_invoice_reminders_user_invoice_sent
+    ON invoice_reminders(user_id, invoice_id, sent_at DESC);
+
+-- Pending payment reconciliations (added 2026-09-08).
+-- Records every remittance advice (e.g. Xero "Payment has been made" email)
+-- received for a customer. Rows sit in `pending` status until a human
+-- confirms the money actually landed in the bank account — remittance
+-- advice is the PAYER's claim, not proof of payment.
+CREATE TABLE IF NOT EXISTS pending_payment_reconciliations (
+    id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v4()::text,
+    user_id VARCHAR(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    customer_id VARCHAR(36) NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    invoice_id VARCHAR(36) REFERENCES invoices(id) ON DELETE SET NULL,  -- nullable if reference doesn't match any invoice
+
+    source_email_id   VARCHAR(64),
+    source_sender     VARCHAR(255),
+    source_subject    VARCHAR(500),
+    pdf_attachment_path VARCHAR(500),
+
+    payer_name VARCHAR(255),
+    payer_abn  VARCHAR(20),
+    payment_date DATE,
+    sent_date    DATE,
+    reference_text VARCHAR(500),           -- "5C1A4C6F - SOFTWARE"
+    invoice_ref_token VARCHAR(8),          -- "5C1A4C6F" — first 8 chars of invoice UUID, uppercased
+    amount NUMERIC(12, 2),
+    amount_currency VARCHAR(3) NOT NULL DEFAULT 'AUD',
+
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',   -- 'pending' | 'confirmed' | 'rejected' | 'stale'
+
+    reconciled_at TIMESTAMPTZ,
+    reconciled_by VARCHAR(255),                      -- email or 'evie'
+    bank_reference VARCHAR(255),
+    bank_screenshot_path VARCHAR(500),
+    notes TEXT,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS ix_pending_recon_user_id        ON pending_payment_reconciliations(user_id);
+CREATE INDEX IF NOT EXISTS ix_pending_recon_customer_id    ON pending_payment_reconciliations(customer_id);
+CREATE INDEX IF NOT EXISTS ix_pending_recon_invoice_id     ON pending_payment_reconciliations(invoice_id);
+CREATE INDEX IF NOT EXISTS ix_pending_recon_ref_token      ON pending_payment_reconciliations(invoice_ref_token);
+CREATE INDEX IF NOT EXISTS ix_pending_recon_status         ON pending_payment_reconciliations(status);
+CREATE INDEX IF NOT EXISTS ix_pending_recon_source_email   ON pending_payment_reconciliations(source_email_id);
+CREATE INDEX IF NOT EXISTS ix_pending_recon_user_status    ON pending_payment_reconciliations(user_id, status, created_at DESC);
+
 -- Reuse the existing update_updated_at_column() function
 DROP TRIGGER IF EXISTS update_employees_updated_at ON employees;
 CREATE TRIGGER update_employees_updated_at
@@ -412,6 +559,16 @@ DROP TRIGGER IF EXISTS update_bas_lodgements_updated_at ON bas_lodgements;
 CREATE TRIGGER update_bas_lodgements_updated_at
     BEFORE UPDATE ON bas_lodgements
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_invoice_reminders_updated_at ON invoice_reminders;
+CREATE TRIGGER update_invoice_reminders_updated_at
+    BEFORE UPDATE ON invoice_reminders
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_pending_payment_reconciliations_updated_at ON pending_payment_reconciliations;
+CREATE TRIGGER update_pending_payment_reconciliations_updated_at
+    BEFORE UPDATE ON pending_payment_reconciliations
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 -- bank_transactions has no updated_at column (audit-only, immutable row),
 -- so no trigger needed.
 
@@ -422,10 +579,12 @@ COMMENT ON TABLE expenses IS 'Expense records with GST tracking';
 COMMENT ON TABLE invoices IS 'Invoice records with GST tracking';
 COMMENT ON TABLE activity_logs IS 'Audit trail of all database modifications';
 COMMENT ON TABLE ocr_queue IS 'Queue for OCR processing of receipt images via vision model';
-COMMENT ON TABLE employees IS 'Employee master record. PII columns (tfn, bank_bsb, bank_account_number) are encrypted at rest via app/shared/pii.py (Fernet, key in .env as PAYROLL_PII_KEY). KMS upgrade is Phase 5.';
+COMMENT ON TABLE employees IS 'Employee master record. PII columns (tfn, bank_bsb, bank_account_number, date_of_birth) are encrypted at rest via app/shared/pii.py (Fernet, key in .env as PAYROLL_PII_KEY). KMS upgrade is Phase 5.';
 COMMENT ON TABLE pay_events IS 'One row per payslip issued. Headline amounts are source of truth; pay_event_lines is the itemised view.';
 COMMENT ON TABLE pay_event_lines IS 'Itemised breakdown of a pay event (earnings, tax, deductions, allowances, employer contributions).';
 COMMENT ON TABLE payslip_deliveries IS 'Audit trail of every payslip email sent. One row per recipient per send.';
 COMMENT ON TABLE super_payments IS 'Superannuation remittances. One row per actual fund payment, covering one or more pay_events.';
 COMMENT ON TABLE bas_lodgements IS 'BAS (Business Activity Statement) lodgements with the ATO. Records the FACT of lodgement (receipt ID, settled amount, manual adjustments), separate from the COMPUTED figures in /api/reports/quarterly-bas.';
 COMMENT ON TABLE bank_transactions IS 'Bank-side provenance for received payments: transaction ID, payer-supplied reference, method (Osko/BPay/etc.), amount, settlement date. Optional FK to invoice. Immutable row (no updated_at) — corrections are delete + re-record.';
+COMMENT ON TABLE invoice_reminders IS 'Append-only log of every statement/chase/communication tied to an invoice. Used to track aged-receivable chasing and reconstruct escalation history. A single statement-of-account email that covers N invoices produces N rows sharing the same email_id.';
+COMMENT ON TABLE pending_payment_reconciliations IS 'Records every remittance advice (e.g. Xero "Payment has been made" email) received for a customer. Rows stay in `pending` status until a human confirms the bank account shows the money actually landed — remittance advice is the PAYER''s claim, not proof of payment.';

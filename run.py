@@ -2,11 +2,24 @@
 """
 Entry point for the Accounting System application.
 
-This script initializes the Flask applications for both the API server
-and the HMI (Human-Machine Interface) server.
+Initializes Flask and starts both the API server (port 5061) and the HMI
+server (port 5062) — either together (default) or one at a time.
+
+Fail-fast on port conflict: if either port is already bound when we try to
+bind, the whole process exits with code 2 so systemd's StartLimitBurst=10
+stops the restart-loop. Otherwise the daemon threads die cleanly (rc=0),
+which `Restart=always` happily restarts — that catch-all is preserved for
+the 2026-08-27 daemon-thread-crash case.
+
+Clean shutdown: SIGTERM/SIGINT triggers server.shutdown() on both servers
+so ports are released promptly, avoiding the race where systemd's restart
+sends SIGTERM to a process that takes its sweet time releasing sockets.
 """
 
+import errno
 import os
+import signal
+import socket
 import sys
 import argparse
 from threading import Thread
@@ -17,6 +30,12 @@ load_dotenv()
 
 from app import create_app
 from app.models import db
+from werkzeug.serving import make_server
+
+
+# Exit code we use for "port collision" so systemd's StartLimitBurst caps
+# the retry spam and operators see the service land in 'failed' state.
+EXIT_PORT_IN_USE = 2
 
 
 def init_database(app):
@@ -26,16 +45,74 @@ def init_database(app):
         print("Database tables created successfully.")
 
 
-def run_api_server(app, host, port):
-    """Run the API server."""
-    print(f"Starting API server on {host}:{port}")
-    app.run(host=host, port=port, debug=False, use_reloader=False)
+def _make_flask_server(host, port, app, label):
+    """Bind+listen ourselves, then hand the socket fd to werkzeug so it
+    skips its own bind_and_activate — and thus its `sys.exit(1)` failure
+    path. That silent exit was turning EADDRINUSE into an infinite restart
+    loop (systemd Restart=always + StartLimitBurst never tripping, because
+    bind conflicts yielded exit code 1 with no operator-visible failure
+    state). Pre-binding lets us fail loud with exit code 2.
+    """
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind((host, port))
+        sock.listen(64)  # werkzeug default request_queue_size; doesn't matter much since threaded=True
+    except OSError as e:
+        sock.close()
+        if e.errno == errno.EADDRINUSE:
+            print(
+                f"FATAL [{label}]: port {port} already in use by another "
+                f"process. Run `ss -tlnp 'sport = :{port}'` to find the "
+                f"holder. Exiting {EXIT_PORT_IN_USE} so systemd stops "
+                f"auto-restarting.",
+                file=sys.stderr,
+                flush=True,
+            )
+            os._exit(EXIT_PORT_IN_USE)
+        raise
+    sock_fd = sock.fileno()
+    # Hand the bound+listening socket to werkzeug via its `fd=` param.
+    # When fd is passed, BaseWSGIServer.__init__ skips its own bind/activate
+    # and just wraps our socket via socket.fromfd.
+    server = make_server(host, port, app, threaded=True, fd=sock_fd)
+    # Close our local handle; werkzeug's fromfd duplicated the fd, our copy
+    # is no longer needed.
+    sock.close()
+    return server
 
 
-def run_hmi_server(app, host, port):
-    """Run the HMI (Browser Interface) server."""
-    print(f"Starting HMI server on {host}:{port}")
-    app.run(host=host, port=port, debug=False, use_reloader=False)
+def _serve(server, label):
+    """Block on the WSGI server until shutdown() is called. Exits non-zero
+    if the port is yanked out from under us mid-serve."""
+    print(f"Starting {label} server on {server.host}:{server.port}", flush=True)
+    try:
+        server.serve_forever()
+    except OSError as e:
+        if e.errno == errno.EADDRINUSE:
+            print(
+                f"FATAL [{label}]: port {server.port} became in-use during "
+                f"serve_forever. Exiting {EXIT_PORT_IN_USE}.",
+                file=sys.stderr,
+                flush=True,
+            )
+            os._exit(EXIT_PORT_IN_USE)
+        raise
+    print(f"{label} server stopped.", flush=True)
+
+
+def _install_signal_handlers(servers):
+    """SIGTERM/SIGINT → server.shutdown() on every server. Called from the
+    main thread before threading starts so port release is prompt."""
+    def _shutdown_all(*_):
+        for s in servers:
+            try:
+                s.shutdown()
+            except Exception:
+                pass
+
+    signal.signal(signal.SIGTERM, _shutdown_all)
+    signal.signal(signal.SIGINT, _shutdown_all)
 
 
 def main():
@@ -72,24 +149,34 @@ def main():
     host = args.host
 
     if args.api_only:
-        run_api_server(app, host, args.api_port)
-    elif args.hmi_only:
-        run_hmi_server(app, host, args.hmi_port)
-    else:
-        api_thread = Thread(target=run_api_server, args=(app, host, args.api_port), daemon=True)
-        hmi_thread = Thread(target=run_hmi_server, args=(app, host, args.hmi_port), daemon=True)
+        server = _make_flask_server(host, args.api_port, app, 'API')
+        _install_signal_handlers([server])
+        _serve(server, 'API')
+        return
 
-        api_thread.start()
-        hmi_thread.start()
+    if args.hmi_only:
+        server = _make_flask_server(host, args.hmi_port, app, 'HMI')
+        _install_signal_handlers([server])
+        _serve(server, 'HMI')
+        return
 
-        print("Both servers started. Press Ctrl+C to stop.")
+    # Both servers — bind BEFORE starting threads so a port conflict fails
+    # the main process (with exit 2) instead of crashing a daemon thread.
+    api_server = _make_flask_server(host, args.api_port, app, 'API')
+    hmi_server = _make_flask_server(host, args.hmi_port, app, 'HMI')
+    servers = [api_server, hmi_server]
 
-        try:
-            api_thread.join()
-            hmi_thread.join()
-        except KeyboardInterrupt:
-            print("\nShutting down servers...")
-            sys.exit(0)
+    _install_signal_handlers(servers)
+
+    api_thread = Thread(target=_serve, args=(api_server, 'API'), daemon=True)
+    hmi_thread = Thread(target=_serve, args=(hmi_server, 'HMI'), daemon=True)
+    api_thread.start()
+    hmi_thread.start()
+
+    print("Both servers started. SIGTERM/SIGINT for clean shutdown.", flush=True)
+
+    api_thread.join()
+    hmi_thread.join()
 
 
 if __name__ == '__main__':

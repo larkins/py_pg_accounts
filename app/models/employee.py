@@ -28,8 +28,27 @@ class Employee(db.Model):
     # Stored as Fernet ciphertext (VARCHAR(500) holds the base64 blob).
     # Read via the *_plain accessors; write via the *_plain setters.
     _tfn = db.Column('tfn', db.String(500), nullable=True)
+    _date_of_birth = db.Column('date_of_birth', db.String(500), nullable=True)
     _bank_bsb = db.Column('bank_bsb', db.String(500), nullable=True)
     _bank_account_number = db.Column('bank_account_number', db.String(500), nullable=True)
+
+    # Address (added 2026-09-17 alongside SAFF work for AusSuper exports).
+    # Plaintext, not encrypted — address data isn't really secret, and
+    # matching the Customer/User schema keeps things consistent. The
+    # encrypted columns above are the truly sensitive stuff (TFN, DOB,
+    # bank details).
+    address_line1 = db.Column(db.String(255), nullable=True)
+    address_line2 = db.Column(db.String(255), nullable=True)
+    city = db.Column(db.String(100), nullable=True)
+    state = db.Column(db.String(50), nullable=True)
+    postcode = db.Column(db.String(20), nullable=True)
+    country = db.Column(db.String(100), nullable=False, default='Australia')
+
+    # Sex + phone (added 2026-09-17). Sex stored as a short code per
+    # the ATO/AusSuper standard ('M' / 'F' / 'X') so the SAFF builder
+    # can emit it without mapping logic. Plaintext, low sensitivity.
+    sex = db.Column(db.String(10), nullable=True)
+    phone = db.Column(db.String(30), nullable=True)
 
     start_date = db.Column(db.Date, nullable=True)
     end_date = db.Column(db.Date, nullable=True)
@@ -77,6 +96,50 @@ class Employee(db.Model):
     @hybrid_property
     def tfn(self):
         return self.tfn_masked
+
+    # --- Date of Birth ---
+    # Stored encrypted as ISO date string ('YYYY-MM-DD'). Same pattern as
+    # TFN — encrypted at rest, decrypted only via *_plain accessor.
+    @hybrid_property
+    def date_of_birth_plain(self):
+        from datetime import date
+        raw = pii.decrypt_pii(self._date_of_birth)
+        if not raw:
+            return None
+        try:
+            return date.fromisoformat(raw)
+        except ValueError:
+            return None
+
+    @date_of_birth_plain.setter
+    def date_of_birth_plain(self, value):
+        if value is None:
+            self._date_of_birth = None
+            return
+        # Accept date or string; serialise to ISO before encrypting.
+        from datetime import date
+        if isinstance(value, date):
+            iso = value.isoformat()
+        else:
+            iso = str(value)
+            # Sanity-check it parses so we don't write garbage.
+            date.fromisoformat(iso)
+        self._date_of_birth = pii.encrypt_pii(iso)
+
+    @hybrid_property
+    def date_of_birth_masked(self):
+        # DOB doesn't have a "last few digits" masking scheme like TFN
+        # (everyone knows their own birthday). Show year only as a
+        # privacy-aware default; callers who need the full date must
+        # explicitly request date_of_birth_plain.
+        d = self.date_of_birth_plain
+        if not d:
+            return None
+        return f'****-**-**'  # fully masked by default — only year reveal is useful and we don't need that
+
+    @hybrid_property
+    def date_of_birth(self):
+        return self.date_of_birth_masked
 
     # --- bank_bsb ---
     @hybrid_property
@@ -139,12 +202,21 @@ class Employee(db.Model):
             'bank_bsb': self.bank_bsb_masked,
             'bank_account_number': self.bank_account_number_masked,
             'bank_reference_prefix': self.bank_reference_prefix,
+            'address_line1': self.address_line1,
+            'address_line2': self.address_line2,
+            'city': self.city,
+            'state': self.state,
+            'postcode': self.postcode,
+            'country': self.country,
+            'sex': self.sex,
+            'phone': self.phone,
             'notes': self.notes,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }
         if include_pii_plain:
             out['tfn_plain'] = self.tfn_plain
+            out['date_of_birth_plain'] = self.date_of_birth_plain
             out['bank_bsb_plain'] = self.bank_bsb_plain
             out['bank_account_number_plain'] = self.bank_account_number_plain
         return out

@@ -44,6 +44,10 @@ def create_api_app(config_path=None):
     app.register_blueprint(bas_bp)
     from app.api.bank_transactions import bank_txn_bp
     app.register_blueprint(bank_txn_bp)
+    from app.api.invoice_reminders import invoice_reminders_bp
+    app.register_blueprint(invoice_reminders_bp)
+    from app.api.payment_reconciliations import payment_recon_bp
+    app.register_blueprint(payment_recon_bp)
 
     @app.route('/api/health')
     def health():

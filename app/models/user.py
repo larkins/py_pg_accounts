@@ -20,7 +20,17 @@ class User(UserMixin, db.Model):
     verification_token = db.Column(db.String(64), unique=True, nullable=True, index=True)
     business_name = db.Column(db.String(255), nullable=True)
     abn = db.Column(db.String(20), nullable=True)
-    address = db.Column(db.Text, nullable=True)
+    # Structured address (the only address representation now). 2026-09-17
+    # refactor removed the legacy free-text `address` TEXT column entirely
+    # to avoid drift between denormalised blob and structured columns.
+    # Note: `country` above is the user's locale (2-letter ISO: 'AU', 'US');
+    # `address_country` below is the address's country name ('Australia').
+    address_line1 = db.Column(db.String(255), nullable=True)
+    address_line2 = db.Column(db.String(255), nullable=True)
+    city = db.Column(db.String(100), nullable=True)
+    state = db.Column(db.String(50), nullable=True)
+    postcode = db.Column(db.String(20), nullable=True)
+    address_country = db.Column(db.String(100), nullable=False, default='Australia')
     contact_email = db.Column(db.String(255), nullable=True)
     contact_number = db.Column(db.String(50), nullable=True)
     logo_path = db.Column(db.String(500), nullable=True)
@@ -58,7 +68,12 @@ class User(UserMixin, db.Model):
             'email_verified': self.email_verified,
             'business_name': self.business_name,
             'abn': self.abn,
-            'address': self.address,
+            'address_line1': self.address_line1,
+            'address_line2': self.address_line2,
+            'city': self.city,
+            'state': self.state,
+            'postcode': self.postcode,
+            'address_country': self.address_country,
             'contact_email': self.contact_email,
             'contact_number': self.contact_number,
             'logo_path': self.logo_path,

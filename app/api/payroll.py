@@ -119,9 +119,14 @@ def _australian_fy_bounds(fy_year):
 
 
 def _infer_fy_year(today=None):
+    """Return the FY year-label for `today` under the convention that
+    fy_year=Y means the FY ending 30 Jun Y (i.e. runs 1 Jul Y-1 .. 30 Jun Y).
+
+    So Sep 2026 → FY2027, Jan 2027 → FY2027, Jul 2027 → FY2028.
+    """
     if today is None:
         today = date.today()
-    return today.year if today.month >= 7 else today.year - 1
+    return today.year + 1 if today.month >= 7 else today.year
 
 
 # ===========================================================================
@@ -872,23 +877,58 @@ def send_payslip(pay_event_id):
                 'MAIL_SERVER_API',
                 os.environ.get('MAIL_SERVER_API', 'http://127.0.0.1:5003'),
             )
+            mail_user = _ca.config.get(
+                'MAIL_SERVER_USER',
+                os.environ.get('MAIL_SERVER_USER', 'evie@peristyle.ai'),
+            )
+            mail_pass = _ca.config.get(
+                'MAIL_SERVER_PASSWORD',
+                os.environ.get('MAIL_SERVER_PASSWORD', ''),
+            )
+            # Authenticate with the mail server first (its /api/emails/mime
+            # requires a Bearer token — bare POST returns 401 "Token is missing").
+            auth_token = None
+            if mail_pass:
+                try:
+                    auth_resp = requests.post(
+                        f'{mail_api}/auth/login',
+                        json={'email': mail_user, 'password': mail_pass},
+                        timeout=10,
+                    )
+                    if auth_resp.ok:
+                        auth_token = (auth_resp.json() or {}).get('token')
+                except Exception as auth_exc:
+                    current_app.logger.warning(
+                        'Mail auth login failed for %s: %s', mail_user, auth_exc)
             # Re-read the PDF bytes for the attachment (mail server expects inline).
             with open(pdf_path, 'rb') as _f:
                 pdf_bytes = _f.read()
-            import base64
-            payload = {
-                'from': 'evie@peristyle.ai',
-                'to': email_addr,
-                'subject': subject,
-                'text': body,
-                'attachments': [{
-                    'filename': os.path.basename(pdf_path),
-                    'content_type': 'application/pdf',
-                    'data': base64.b64encode(pdf_bytes).decode('ascii'),
-                }],
-            }
+            # Build a raw MIME message — /api/emails/mime expects
+            # `mime_content` (ASCII string of a fully-formed MIME message),
+            # not a structured JSON envelope.
+            from email.message import EmailMessage as _EmailMessage
+            from email.utils import formatdate as _formatdate, make_msgid as _make_msgid
+            _msg = _EmailMessage()
+            _msg['From'] = 'evie@peristyle.ai'
+            _msg['To'] = email_addr
+            _msg['Subject'] = subject
+            _msg['Date'] = _formatdate(localtime=True)
+            _msg['Message-ID'] = _make_msgid(domain='peristyle.ai')
+            _msg.set_content(body)
+            _msg.add_attachment(pdf_bytes, maintype='application', subtype='pdf',
+                                filename=os.path.basename(pdf_path))
+            mime_bytes = _msg.as_bytes()
+            if any(_b >= 128 for _b in mime_bytes):
+                # Fall back to latin-1 if any non-ascii slipped in.
+                mime_str = mime_bytes.decode('latin-1')
+            else:
+                mime_str = mime_bytes.decode('ascii')
+            mime_headers = {'Content-Type': 'application/json'}
+            if auth_token:
+                mime_headers['Authorization'] = f'Bearer {auth_token}'
+            payload = {'to': email_addr, 'mime_content': mime_str}
             r = requests.post(f'{mail_api}/api/emails/mime',
-                              json=payload, timeout=15)
+                              json=payload, headers=mime_headers, timeout=15)
             if r.ok:
                 try:
                     resp = r.json()

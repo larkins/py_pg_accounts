@@ -53,6 +53,10 @@ def create_app(config_path=None):
     from app.api.payroll import payroll_api_bp
     from app.api.bas import bas_bp
     from app.api.bank_transactions import bank_txn_bp
+    from app.api.invoice_reminders import invoice_reminders_bp
+    from app.api.payment_reconciliations import payment_recon_bp
+    from app.api.xero_export import xero_export_bp
+    from app.api.payroll_exports import payroll_exports_bp
     from app.hmi.routes import hmi_bp
     from app.hmi.payroll import payroll_hmi_bp
     from app.pwa.routes import pwa_bp
@@ -62,6 +66,10 @@ def create_app(config_path=None):
     app.register_blueprint(payroll_api_bp)
     app.register_blueprint(bas_bp)
     app.register_blueprint(bank_txn_bp)
+    app.register_blueprint(invoice_reminders_bp)
+    app.register_blueprint(payment_recon_bp)
+    app.register_blueprint(xero_export_bp)
+    app.register_blueprint(payroll_exports_bp)
     app.register_blueprint(hmi_bp)
     app.register_blueprint(payroll_hmi_bp)
     app.register_blueprint(pwa_bp)

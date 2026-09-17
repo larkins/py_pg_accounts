@@ -26,6 +26,23 @@ from .pay_event_line import PayEventLine, PAY_EVENT_LINE_TYPES
 from .payslip_delivery import PayslipDelivery, PAYSLIP_DELIVERY_STATUSES, PAYSLIP_RECIPIENT_KINDS
 from .super_payment import SuperPayment, SUPER_PAYMENT_STATUSES
 
+# Aged-receivable chasing log (2026-09-08 — tracks statements/chases
+# sent to customers for overdue invoices).
+from .invoice_reminder import (
+    InvoiceReminder,
+    INVOICE_REMINDER_TYPES,
+    INVOICE_REMINDER_CHANNELS,
+    INVOICE_REMINDER_DIRECTIONS,
+    INVOICE_REMINDER_SENDERS,
+)
+
+# Remittance advice -> bank reconciliation log (2026-09-08 — Xero payments
+# must be reconciled against the bank account before the invoice is marked paid).
+from .pending_payment_reconciliation import (
+    PendingPaymentReconciliation,
+    PENDING_RECONCILIATION_STATUSES,
+)
+
 
 __all__ = [
     'db', 'get_utc_now',
@@ -36,4 +53,11 @@ __all__ = [
     'PAY_EVENT_STATUSES', 'PAY_EVENT_LINE_TYPES',
     'PAYSLIP_DELIVERY_STATUSES', 'PAYSLIP_RECIPIENT_KINDS',
     'SUPER_PAYMENT_STATUSES',
+    'InvoiceReminder',
+    'INVOICE_REMINDER_TYPES',
+    'INVOICE_REMINDER_CHANNELS',
+    'INVOICE_REMINDER_DIRECTIONS',
+    'INVOICE_REMINDER_SENDERS',
+    'PendingPaymentReconciliation',
+    'PENDING_RECONCILIATION_STATUSES',
 ]

@@ -6,6 +6,8 @@ Provides reusable PDF generation for invoices.
 
 import io
 import os
+
+from app.shared.address import render_address
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
@@ -44,8 +46,8 @@ def generate_invoice_pdf(user, invoice):
         business_paragraphs.append(f'<b>{user.business_name}</b>')
     if user.abn:
         business_paragraphs.append(f'ABN: {user.abn}')
-    if user.address:
-        business_paragraphs.append(user.address.replace(chr(10), '<br/>'))
+    if render_address(user):
+        business_paragraphs.append(render_address(user).replace(chr(10), '<br/>'))
     if user.contact_email:
         business_paragraphs.append(f'Email: {user.contact_email}')
     if user.contact_number:
@@ -114,8 +116,8 @@ def generate_invoice_pdf(user, invoice):
     customer_info = f"<b>{invoice.customer.name}</b><br/>"
     if invoice.customer.contact_name:
         customer_info += f"Attn: {invoice.customer.contact_name}<br/>"
-    if invoice.customer.address:
-        customer_info += f"{invoice.customer.address.replace(chr(10), '<br/>')}<br/>"
+    if render_address(invoice.customer):
+        customer_info += f"{render_address(invoice.customer).replace(chr(10), '<br/>')}<br/>"
     if invoice.customer.contact_email:
         customer_info += f"Email: {invoice.customer.contact_email}<br/>"
     if invoice.customer.contact_number:
@@ -281,8 +283,8 @@ def generate_statement_of_account_pdf(user, customer, invoices, as_of_date):
         business_paragraphs.append(f'<b>{user.business_name}</b>')
     if user.abn:
         business_paragraphs.append(f'ABN: {user.abn}')
-    if user.address:
-        business_paragraphs.append(user.address.replace(chr(10), '<br/>'))
+    if render_address(user):
+        business_paragraphs.append(render_address(user).replace(chr(10), '<br/>'))
     if user.contact_email:
         business_paragraphs.append(f'Email: {user.contact_email}')
     if user.contact_number:
@@ -350,8 +352,8 @@ def generate_statement_of_account_pdf(user, customer, invoices, as_of_date):
     customer_info = f"<b>{customer.name}</b><br/>"
     if customer.contact_name:
         customer_info += f"Attn: {customer.contact_name}<br/>"
-    if customer.address:
-        customer_info += f"{customer.address.replace(chr(10), '<br/>')}<br/>"
+    if render_address(customer):
+        customer_info += f"{render_address(customer).replace(chr(10), '<br/>')}<br/>"
     if customer.contact_email:
         customer_info += f"Email: {customer.contact_email}<br/>"
     if customer.contact_number:
@@ -440,7 +442,7 @@ def generate_statement_of_account_pdf(user, customer, invoices, as_of_date):
     # ---- invoice line items ----------------------------------------------
     elements.append(Paragraph('<b>Invoices</b>', styles['Heading3']))
 
-    header_row = ['Date', 'Invoice #', 'Description', 'Due', 'Amount', 'Paid', 'Balance', 'Status']
+    header_row = ['Date', 'Invoice #', 'Description', 'Due', 'Amount', 'Paid', 'Balance', 'Status', 'Rem.']
     rows = [header_row]
     running_balance = Decimal('0.00')
 
@@ -467,6 +469,12 @@ def generate_statement_of_account_pdf(user, customer, invoices, as_of_date):
         if len(desc) > 38:
             desc = desc[:35] + '…'
 
+        # reminder count (0 if relation isn't loaded)
+        try:
+            rcount = inv.reminders.count() if hasattr(inv, 'reminders') else 0
+        except Exception:
+            rcount = 0
+
         rows.append([
             inv.invoice_date.isoformat(),
             inv.id[:8].upper(),
@@ -476,9 +484,10 @@ def generate_statement_of_account_pdf(user, customer, invoices, as_of_date):
             f"${paid:,.2f}" if inv.status == 'paid' else '—',
             f"${bal:,.2f}" if bal > 0 else '—',
             status_disp.upper(),
+            str(rcount) if rcount else '—',
         ])
 
-    col_widths = [1.9*cm, 2.0*cm, 5.6*cm, 1.8*cm, 1.9*cm, 1.7*cm, 1.9*cm, 1.7*cm]
+    col_widths = [1.7*cm, 1.8*cm, 5.1*cm, 1.7*cm, 1.8*cm, 1.6*cm, 1.8*cm, 1.5*cm, 0.8*cm]
     items_table = Table(rows, colWidths=col_widths, repeatRows=1)
     ts = TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#34495e')),
@@ -602,7 +611,7 @@ def generate_payslip_pdf(user, employee, pay_event, lines=None, business_name=No
 
     biz = business_name or (user.business_name if user else None) or 'Employer'
     biz_abn = abn or (user.abn if user else None) or ''
-    biz_addr = address or (user.address if user else None) or ''
+    biz_addr = address or (render_address(user) if user else '') or ''
     biz_email = (user.contact_email if user else None) or ''
     biz_phone = (user.contact_number if user else None) or ''
 

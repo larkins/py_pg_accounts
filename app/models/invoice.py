@@ -29,6 +29,15 @@ class Invoice(db.Model):
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=get_utc_now)
     updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=get_utc_now, onupdate=get_utc_now)
 
+    # Reverse relation: every reminder/chase logged against this invoice.
+    # Added 2026-09-08 alongside the invoice_reminders table.
+    reminders = db.relationship(
+        'InvoiceReminder',
+        backref='invoice',
+        lazy='dynamic',
+        cascade='all, delete-orphan',
+    )
+
     @staticmethod
     def calculate_gst(ex_gst_amount, gst_type):
         ex_gst = Decimal(str(ex_gst_amount))
@@ -63,5 +72,6 @@ class Invoice(db.Model):
             'confirmed_received_at': self.confirmed_received_at.isoformat() if self.confirmed_received_at else None,
             'paid_at': self.paid_at.isoformat() if self.paid_at else None,
             'created_at': self.created_at.isoformat() if self.created_at else None,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'reminder_count': self.reminders.count() if hasattr(self, 'reminders') else 0,
         }

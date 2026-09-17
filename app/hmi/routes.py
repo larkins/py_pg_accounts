@@ -1183,3 +1183,111 @@ def resend_verification():
     flash(f'Verification URL: {verification_url}', 'info')
 
     return redirect(url_for('hmi.api_key_management'))
+
+
+# ---------------------------------------------------------------------------
+# Xero CSV export (added 2026-09-17 alongside the existing /api/exports/xero
+# route — this gives Michael a one-click way to download a Xero-ready export
+# for the accountant without needing to hit the API with curl).
+# ---------------------------------------------------------------------------
+
+@hmi_bp.route('/exports/xero', methods=['GET'])
+@login_required
+def xero_export_form():
+    """Render the Xero export form with two options:
+       - All time (defaults to the earliest invoice/expense we have)
+       - Custom date range
+    Both submit to /exports/xero/download.
+    """
+    user = User.query.get(session['user_id'])
+    # Earliest date we have any data for — useful as the default "from" for
+    # the custom range option. Falls back to start of 2024 if no data.
+    from app.models.invoice import Invoice
+    from app.models.expense import Expense
+    from sqlalchemy import func
+
+    earliest_invoice = db.session.query(func.min(Invoice.invoice_date)).filter(
+        Invoice.user_id == user.id,
+    ).scalar()
+    earliest_expense = db.session.query(func.min(Expense.expense_date)).filter(
+        Expense.user_id == user.id,
+    ).scalar()
+    candidates = [d for d in (earliest_invoice, earliest_expense) if d]
+    earliest = min(candidates) if candidates else date(2024, 1, 1)
+    today = date.today()
+
+    return render_template(
+        'xero_export.html',
+        earliest=earliest.isoformat(),
+        today=today.isoformat(),
+    )
+
+
+@hmi_bp.route('/exports/xero/download', methods=['POST'])
+@login_required
+def xero_export_download():
+    """Build and return the Xero export ZIP based on form inputs.
+
+    Form fields:
+      mode            (str)   'all' for all-time, 'custom' for custom range
+      from_date       (str)   ISO date — required when mode='custom'
+      to_date         (str)   ISO date — required when mode='custom'
+      include_drafts  (checkbox) 'on' to include draft invoices
+    """
+    user = User.query.get(session['user_id'])
+
+    mode = request.form.get('mode', 'all')
+    include_drafts = request.form.get('include_drafts') == 'on'
+
+    if mode == 'all':
+        # Use the API helper with empty range filtering — actually we still
+        # need a date range. For "all time", use the earliest data date and
+        # today. If there's no data, the resulting ZIP is still valid (just
+        # empty CSVs with headers).
+        from app.models.invoice import Invoice
+        from app.models.expense import Expense
+        from sqlalchemy import func
+        earliest_inv = db.session.query(func.min(Invoice.invoice_date)).filter(
+            Invoice.user_id == user.id,
+        ).scalar()
+        earliest_exp = db.session.query(func.min(Expense.expense_date)).filter(
+            Expense.user_id == user.id,
+        ).scalar()
+        candidates = [d for d in (earliest_inv, earliest_exp) if d]
+        from_d = min(candidates) if candidates else date(2024, 1, 1)
+        to_d = date.today()
+    elif mode == 'custom':
+        from_str = request.form.get('from_date', '').strip()
+        to_str = request.form.get('to_date', '').strip()
+        try:
+            from_d = date.fromisoformat(from_str)
+            to_d = date.fromisoformat(to_str)
+        except (ValueError, TypeError):
+            flash('Please enter valid dates in YYYY-MM-DD format.', 'error')
+            return redirect(url_for('hmi.xero_export_form'))
+        if from_d > to_d:
+            flash('From date must be on or before To date.', 'error')
+            return redirect(url_for('hmi.xero_export_form'))
+    else:
+        flash('Unknown export mode.', 'error')
+        return redirect(url_for('hmi.xero_export_form'))
+
+    # Delegate to the shared Xero export builder (same one the API uses).
+    from app.api.xero_export import build_xero_zip, log_xero_export
+    period_label = f'{from_d.isoformat()}_to_{to_d.isoformat()}'
+
+    zip_bytes, counts = build_xero_zip(user, from_d, to_d, include_drafts=include_drafts)
+    log_xero_export(user, period_label, counts, include_drafts, source='hmi')
+
+    flash(
+        f'Export complete — {counts["invoices"]} invoice(s), '
+        f'{counts["bills"]} bill(s), {counts["contacts"]} contact(s).',
+        'success',
+    )
+
+    return send_file(
+        io.BytesIO(zip_bytes),
+        mimetype='application/zip',
+        as_attachment=True,
+        download_name=f'peristyle-xero-export-{period_label}.zip',
+    )

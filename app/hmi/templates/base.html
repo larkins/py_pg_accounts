@@ -28,12 +28,32 @@
             padding: 1rem 0;
             margin-bottom: 2rem;
         }
+        /* Header layout: flexbox so the user-info stays on the same line as
+           the nav even when the nav gets wider (was wrapping to a second
+           line with float/inline-block). 2026-09-17 fix. */
+        header > .container {
+            display: flex;
+            align-items: center;
+            flex-wrap: nowrap;
+            gap: 1rem;
+        }
+        .header-left {
+            display: flex;
+            align-items: center;
+            flex: 1 1 auto;
+            min-width: 0;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
         header h1 {
-            display: inline-block;
-            margin-right: 2rem;
+            margin: 0;
+            white-space: nowrap;
+            flex-shrink: 0;
         }
         nav {
-            display: inline-block;
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
         }
         nav a {
             color: white;
@@ -47,6 +67,68 @@
         }
         nav a.active {
             background: #3498db;
+        }
+        /* Settings dropdown (2026-09-17 refactor — collapses Xero Export,
+           Categories, Activity, API Key under a single menu button so the
+           nav bar fits on one line). Pure <details>/<summary>, no JS. */
+        .nav-dropdown {
+            display: inline-block;
+            position: relative;
+            margin-right: 1.5rem;
+        }
+        .nav-dropdown > summary {
+            color: white;
+            cursor: pointer;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            list-style: none;
+            user-select: none;
+        }
+        .nav-dropdown > summary::-webkit-details-marker {
+            display: none;
+        }
+        .nav-dropdown > summary:hover {
+            background: #34495e;
+        }
+        .nav-dropdown[open] > summary,
+        .nav-dropdown > summary.active {
+            background: #3498db;
+        }
+        .nav-dropdown[open] > summary::after {
+            content: ' \25B2';  /* ▲ when open */
+        }
+        .nav-dropdown > summary::after {
+            content: ' \25BC';  /* ▼ when closed */
+            font-size: 0.7em;
+            margin-left: 0.25em;
+        }
+        .nav-dropdown-menu {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            margin-top: 0.25rem;
+            background: white;
+            border-radius: 4px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            min-width: 200px;
+            z-index: 100;
+            padding: 0.5rem 0;
+        }
+        .nav-dropdown-menu a {
+            display: block;
+            color: #2c3e50 !important;
+            padding: 0.5rem 1rem !important;
+            margin: 0 !important;
+            border-radius: 0 !important;
+            text-decoration: none;
+        }
+        .nav-dropdown-menu a:hover {
+            background: #f8f9fa !important;
+            color: #2c3e50 !important;
+        }
+        .nav-dropdown-menu a.active {
+            background: #3498db !important;
+            color: white !important;
         }
         .flash-messages {
             margin-bottom: 1rem;
@@ -190,8 +272,9 @@
             margin-top: 2rem;
         }
         .user-info {
-            float: right;
             font-size: 0.875rem;
+            flex-shrink: 0;
+            white-space: nowrap;
         }
         .user-info a {
             color: #bdc3c7;
@@ -247,22 +330,33 @@
 <body>
     <header>
         <div class="container">
-            <h1>Accounting System</h1>
             {% if session.get('user_id') %}
-            <nav>
-                <a href="{{ url_for('hmi.dashboard') }}">Dashboard</a>
-                <a href="{{ url_for('hmi.expenses') }}">Expenses</a>
-                <a href="{{ url_for('hmi.invoices') }}">Invoices</a>
-                <a href="{{ url_for('payroll_hmi.payroll_summary') }}">Payroll</a>
-                <a href="{{ url_for('hmi.reports') }}">Reports</a>
-                <a href="{{ url_for('hmi.account_categories') }}">Categories</a>
-                <a href="{{ url_for('hmi.activity_logs') }}">Activity</a>
-                <a href="{{ url_for('hmi.api_key_management') }}">API Key</a>
-            </nav>
+            <div class="header-left">
+                <h1>Accounting System</h1>
+                <nav>
+                    <a href="{{ url_for('hmi.dashboard') }}" {% if request.endpoint == 'hmi.dashboard' %}class="active"{% endif %}>Dashboard</a>
+                    <a href="{{ url_for('hmi.expenses') }}" {% if request.endpoint == 'hmi.expenses' %}class="active"{% endif %}>Expenses</a>
+                    <a href="{{ url_for('hmi.invoices') }}" {% if request.endpoint == 'hmi.invoices' %}class="active"{% endif %}>Invoices</a>
+                    <a href="{{ url_for('payroll_hmi.payroll_summary') }}" {% if request.endpoint == 'payroll_hmi.payroll_summary' %}class="active"{% endif %}>Payroll</a>
+                    <a href="{{ url_for('hmi.reports') }}" {% if request.endpoint == 'hmi.reports' %}class="active"{% endif %}>Reports</a>
+                    {% set settings_endpoints = ['hmi.xero_export_form', 'hmi.account_categories', 'hmi.activity_logs', 'hmi.api_key_management'] %}
+                    <details class="nav-dropdown" {% if request.endpoint in settings_endpoints %}open{% endif %}>
+                        <summary class="{% if request.endpoint in settings_endpoints %}active{% endif %}">Settings</summary>
+                        <div class="nav-dropdown-menu">
+                            <a href="{{ url_for('hmi.xero_export_form') }}" {% if request.endpoint == 'hmi.xero_export_form' %}class="active"{% endif %}>Xero Export</a>
+                            <a href="{{ url_for('hmi.account_categories') }}" {% if request.endpoint == 'hmi.account_categories' %}class="active"{% endif %}>Categories</a>
+                            <a href="{{ url_for('hmi.activity_logs') }}" {% if request.endpoint == 'hmi.activity_logs' %}class="active"{% endif %}>Activity</a>
+                            <a href="{{ url_for('hmi.api_key_management') }}" {% if request.endpoint == 'hmi.api_key_management' %}class="active"{% endif %}>API Key</a>
+                        </div>
+                    </details>
+                </nav>
+            </div>
             <div class="user-info">
                 {{ session.get('user_email') }}
                 | <a href="{{ url_for('hmi.logout') }}">Logout</a>
             </div>
+            {% else %}
+            <h1>Accounting System</h1>
             {% endif %}
         </div>
     </header>

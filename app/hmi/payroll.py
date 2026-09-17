@@ -40,9 +40,14 @@ def _australian_fy_bounds(fy_year):
 
 
 def _infer_fy_year(today=None):
+    """Return the FY year-label for `today` under the convention that
+    fy_year=Y means the FY ending 30 Jun Y (i.e. runs 1 Jul Y-1 .. 30 Jun Y).
+
+    So Sep 2026 → FY2027, Jan 2027 → FY2027, Jul 2027 → FY2028.
+    """
     if today is None:
         today = date.today()
-    return today.year if today.month >= 7 else today.year - 1
+    return today.year + 1 if today.month >= 7 else today.year
 
 
 def _employee_or_404(user_id, employee_id):
@@ -635,3 +640,112 @@ def payroll_super_payment_mark_paid(super_payment_id):
     flash('Super payment marked paid', 'success')
     return redirect(url_for('payroll_hmi.payroll_super_payment_detail',
                              super_payment_id=sp.id))
+
+# ---------------------------------------------------------------------------
+# Payroll exports (added 2026-09-17)
+#
+# Two downloads that hit the API endpoints at /api/exports/payroll/*.
+# Kept as GET forms (not POST) because each "button" is just a filtered
+# download — there's no state mutation, and a GET URL is shareable for
+# troubleshooting. The form just builds the right query string.
+# ---------------------------------------------------------------------------
+
+@payroll_hmi_bp.route('/exports', methods=['GET'])
+@login_required
+def payroll_exports():
+    """Render the payroll exports page with two download buttons.
+
+    The page shows a status filter (defaults to 'finalized' — i.e. pending
+    payroll), an optional date range, and links to the two API endpoints.
+    Each link embeds the current filter selection.
+
+    Download links are constructed as GET requests to:
+      /api/exports/payroll/aba?status=...&from_date=...&to_date=...&process_date=...
+      /api/exports/payroll/super-csv?status=...&from_date=...&to_date=...
+    """
+    user_id = session['user_id']
+
+    # Read current filter selection from the query string
+    statuses_raw = request.args.get('status', 'finalized')
+    from_str = request.args.get('from_date', '').strip()
+    to_str = request.args.get('to_date', '').strip()
+    process_str = request.args.get('process_date', '').strip() or date.today().isoformat()
+
+    statuses = [s.strip() for s in statuses_raw.split(',') if s.strip()]
+
+    # Build the live preview (counts + totals) for the selected filter.
+    # We replicate the API's filter logic here in a single query rather than
+    # calling the API endpoint (which would need an API key).
+    q = PayEvent.query.filter(
+        PayEvent.user_id == user_id,
+        PayEvent.status.in_(statuses),
+    )
+    if from_str:
+        try:
+            q = q.filter(PayEvent.payment_date >= date.fromisoformat(from_str))
+        except ValueError:
+            pass
+    if to_str:
+        try:
+            q = q.filter(PayEvent.payment_date <= date.fromisoformat(to_str))
+        except ValueError:
+            pass
+    events = q.order_by(PayEvent.payment_date.asc()).all()
+
+    employees = {e.id: e for e in Employee.query.all()}
+    total_net = sum((Decimal(str(ev.net_amount)) for ev in events), Decimal('0'))
+    total_gross = sum((Decimal(str(ev.gross_amount)) for ev in events), Decimal('0'))
+    total_super = sum((Decimal(str(ev.super_payable_amount)) for ev in events), Decimal('0'))
+
+    # Check whether the user can actually export anything (bank details +
+    # super fund on each employee). The HMI shows the validation upfront so
+    # users don't download an empty file.
+    user = Employee.query.first()  # placeholder — we need the User row
+    from app.models.user import User
+    user_row = User.query.get(user_id)
+    has_business_bank = bool(user_row.bsb and user_row.account_number)
+
+    employees_missing_bank = sum(
+        1 for ev in events
+        if not employees.get(ev.employee_id)
+        or not employees[ev.employee_id].bank_bsb_plain
+    )
+    employees_missing_super = sum(
+        1 for ev in events
+        if not employees.get(ev.employee_id)
+        or not employees[ev.employee_id].super_fund_member_no
+    )
+
+    # Build the download URLs (relative to the app root, not the payroll prefix).
+    aba_query = {'status': statuses_raw}
+    if from_str:
+        aba_query['from_date'] = from_str
+    if to_str:
+        aba_query['to_date'] = to_str
+    if process_str:
+        aba_query['process_date'] = process_str
+    super_query = {'status': statuses_raw}
+    if from_str:
+        super_query['from_date'] = from_str
+    if to_str:
+        super_query['to_date'] = to_str
+    aba_query_string = '&'.join(f'{k}={v}' for k, v in aba_query.items())
+    super_query_string = '&'.join(f'{k}={v}' for k, v in super_query.items())
+
+    return render_template(
+        'payroll/payroll_exports.html',
+        statuses_raw=statuses_raw,
+        from_date=from_str,
+        to_date=to_str,
+        process_date=process_str,
+        pay_event_count=len(events),
+        distinct_employees=len({ev.employee_id for ev in events}),
+        total_net=total_net,
+        total_gross=total_gross,
+        total_super=total_super,
+        has_business_bank=has_business_bank,
+        employees_missing_bank=employees_missing_bank,
+        employees_missing_super=employees_missing_super,
+        aba_query_string=aba_query_string,
+        super_query_string=super_query_string,
+    )
