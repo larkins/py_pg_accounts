@@ -19,7 +19,7 @@ Columns we emit (one row per employee per pay event):
     SuperGuaranteeAmount   Decimal dollars (employer SGC for the period)
     SalarySacrifice        Decimal dollars (employee extra; 0 unless we add it later)
     TotalContribution      = SuperGuaranteeAmount + SalarySacrifice
-    FundName               "AustralianSuper" (the portal can handle other funds too)
+    FundName               defaults to system_settings.DEFAULT_FUND_NAME
 
 Note: the actual portal may want slightly different headers depending on the
 fund/portal version. If Michael's accountant finds the upload is rejected
@@ -104,6 +104,16 @@ def _format_amount(value):
     return str(Decimal(str(value)).quantize(Decimal('0.01')))
 
 
+def _get_setting(key):
+    """Read a setting from the system_settings table.
+
+    Lazy import so this module can be imported in environments where the
+    SQLAlchemy session isn't yet configured (e.g. raw CLI tools).
+    """
+    from app.models.system_setting import get_setting
+    return get_setting(key)
+
+
 def build_super_csv(rows):
     """Build the AustralianSuper CSV from a list of contribution rows.
 
@@ -119,7 +129,7 @@ def build_super_csv(rows):
         - 'ote_amount'       (Decimal/str)
         - 'sgc_amount'       (Decimal/str) — employer super guarantee
         - 'salary_sacrifice' (Decimal/str, optional, default 0)
-        - 'fund_name'        (str, default 'AustralianSuper')
+        - 'fund_name'        (str, defaults to system_settings.DEFAULT_FUND_NAME)
 
     Returns: a CSV string (UTF-8 with BOM so Excel opens cleanly).
     """
@@ -152,7 +162,7 @@ def build_super_csv(rows):
             'SuperGuaranteeAmount': _format_amount(sgc),
             'SalarySacrifice': _format_amount(sacrifice),
             'TotalContribution': _format_amount(total),
-            'FundName': row.get('fund_name', 'AustralianSuper'),
+            'FundName': row.get('fund_name') or _get_setting('DEFAULT_FUND_NAME'),
         })
 
     return buf.getvalue()

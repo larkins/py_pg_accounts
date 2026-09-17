@@ -834,7 +834,11 @@ def send_payslip(pay_event_id):
         return _err('Employee has no email_work or email_personal on file', 400)
 
     deliveries = []
-    business_name = user.business_name or 'Peristyle'
+    # Business name lookup: explicit user setting > system_settings table.
+    # Stored on User.business_name at onboarding; system_settings is the
+    # admin-tunable fallback (set via PUT /api/settings/<key>).
+    from app.models.system_setting import get_setting
+    business_name = user.business_name or get_setting('BUSINESS_NAME')
     subject = (f'Your payslip \u2013 {pe.pay_period_start.isoformat()} '
                f'to {pe.pay_period_end.isoformat()} ({business_name})')
 

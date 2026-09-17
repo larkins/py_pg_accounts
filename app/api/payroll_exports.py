@@ -38,6 +38,7 @@ from app.models.employee import Employee
 from app.models.pay_event import PayEvent
 from app.models.super_payment import SuperPayment
 from app.models.activity_log import ActivityLog
+from app.models.system_setting import get_setting as _get_setting
 from app.shared.aba import build_aba_file
 from app.shared.super_csv import build_super_csv
 from app.shared.decorators import api_key_required
@@ -357,7 +358,7 @@ def export_super_csv():
             'ote_amount': ev.super_ote_amount,
             'sgc_amount': ev.super_payable_amount,
             'salary_sacrifice': '0',
-            'fund_name': emp.super_fund_name or 'AustralianSuper',
+            'fund_name': emp.super_fund_name or _get_setting('DEFAULT_FUND_NAME'),
         })
 
     if not rows:

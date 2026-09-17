@@ -588,3 +588,23 @@ COMMENT ON TABLE bas_lodgements IS 'BAS (Business Activity Statement) lodgements
 COMMENT ON TABLE bank_transactions IS 'Bank-side provenance for received payments: transaction ID, payer-supplied reference, method (Osko/BPay/etc.), amount, settlement date. Optional FK to invoice. Immutable row (no updated_at) — corrections are delete + re-record.';
 COMMENT ON TABLE invoice_reminders IS 'Append-only log of every statement/chase/communication tied to an invoice. Used to track aged-receivable chasing and reconstruct escalation history. A single statement-of-account email that covers N invoices produces N rows sharing the same email_id.';
 COMMENT ON TABLE pending_payment_reconciliations IS 'Records every remittance advice (e.g. Xero "Payment has been made" email) received for a customer. Rows stay in `pending` status until a human confirms the bank account shows the money actually landed — remittance advice is the PAYER''s claim, not proof of payment.';
+
+
+-- ============================================================================
+-- System settings (added 2026-09-17 for open-source release)
+-- ----------------------------------------------------------------------------
+-- Key/value store for app-wide runtime-tunable constants (business name,
+-- default super fund identifiers, etc.). Replaces what used to be hardcoded
+-- in source. Seeded with DEFAULT_SETTINGS via seed_defaults() on app boot.
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS system_settings (
+    key        VARCHAR(100) PRIMARY KEY,
+    value      TEXT NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE system_settings IS 'Key/value store for runtime-tunable app-wide constants. Seeded with defaults on boot; updatable via API. Lookup precedence: explicit override > DB row > SETTING_<KEY> env var > caller default.';
+
+CREATE TRIGGER update_system_settings_updated_at
+    BEFORE UPDATE ON system_settings
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

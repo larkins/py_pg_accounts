@@ -63,6 +63,16 @@ from datetime import date
 from decimal import Decimal
 
 
+def _get_setting(key):
+    """Read a setting from the system_settings table.
+
+    Imported lazily so the module can be imported in environments where
+    the SQLAlchemy session isn't yet configured (e.g. raw CLI tools).
+    """
+    from app.models.system_setting import get_setting
+    return get_setting(key)
+
+
 MAPPED_COLUMNS = (
     # --- Employer ---
     'Employer ID',
@@ -170,13 +180,17 @@ def build_mapped_csv(rows, employer_id=None):
             'Locality Name Text': row.get('city', ''),
             'State or Territory Code': row.get('state', ''),
             'Postcode Text': row.get('postcode', ''),
-            'Fund Details / Organisational Name Text': row.get(
-                'fund_name',
-                os.environ.get('DEFAULT_FUND_NAME', 'AustralianSuper'),
+            # Fund identifiers — read from system_settings table (see
+            # app/models/system_setting.py). Caller can override per-row
+            # via the `fund_name` row dict key, but ABN/USI are sourced
+            # globally so they're consistent across all employees
+            # contributing to the same fund.
+            'Fund Details / Organisational Name Text': (
+                row.get('fund_name') or _get_setting('DEFAULT_FUND_NAME')
             ),
-            'ABN': os.environ.get('AUSTRALIAN_SUPER_ABN', '65714394898'),
-            'USI': os.environ.get('AUSTRALIAN_SUPER_USI', 'STA0100AU'),
-            'Fund ID (ABN/USI)': os.environ.get('AUSTRALIAN_SUPER_USI', 'STA0100AU'),
+            'ABN': _get_setting('DEFAULT_FUND_ABN'),
+            'USI': _get_setting('DEFAULT_FUND_USI'),
+            'Fund ID (ABN/USI)': _get_setting('DEFAULT_FUND_USI'),
             'Pay Period Start Date': _format_date_iso(row.get('pay_period_start')),
             'Pay Period End Date': _format_date_iso(row.get('pay_period_end')),
             'Transaction Date': _format_date_iso(row.get('transaction_date')),

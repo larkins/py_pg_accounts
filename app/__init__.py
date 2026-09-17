@@ -57,6 +57,7 @@ def create_app(config_path=None):
     from app.api.payment_reconciliations import payment_recon_bp
     from app.api.xero_export import xero_export_bp
     from app.api.payroll_exports import payroll_exports_bp
+    from app.api.settings import settings_bp
     from app.hmi.routes import hmi_bp
     from app.hmi.payroll import payroll_hmi_bp
     from app.pwa.routes import pwa_bp
@@ -70,6 +71,7 @@ def create_app(config_path=None):
     app.register_blueprint(payment_recon_bp)
     app.register_blueprint(xero_export_bp)
     app.register_blueprint(payroll_exports_bp)
+    app.register_blueprint(settings_bp)
     app.register_blueprint(hmi_bp)
     app.register_blueprint(payroll_hmi_bp)
     app.register_blueprint(pwa_bp)
@@ -84,5 +86,13 @@ def create_app(config_path=None):
         from flask import send_from_directory
         upload_folder = app.config.get('UPLOAD_FOLDER', 'uploads')
         return send_from_directory(os.path.abspath(upload_folder), filename)
+
+    # Seed the system_settings table with default business constants
+    # (BUSINESS_NAME, DEFAULT_FUND_ABN, etc.) on first boot. Idempotent —
+    # only inserts missing keys, never overwrites values an admin has
+    # already set via PUT /api/settings/<key>.
+    with app.app_context():
+        from app.models.system_setting import seed_defaults
+        seed_defaults(app)
 
     return app

@@ -26,6 +26,17 @@ from .pay_event_line import PayEventLine, PAY_EVENT_LINE_TYPES
 from .payslip_delivery import PayslipDelivery, PAYSLIP_DELIVERY_STATUSES, PAYSLIP_RECIPIENT_KINDS
 from .super_payment import SuperPayment, SUPER_PAYMENT_STATUSES
 
+# System-wide key-value settings (added 2026-09-17 for open-source
+# release — replaces hardcoded business name / fund identifiers with
+# runtime-tunable values). See app/models/system_setting.py.
+from .system_setting import (
+    SystemSetting,
+    get_setting,
+    set_setting,
+    seed_defaults,
+    DEFAULT_SETTINGS,
+)
+
 # Aged-receivable chasing log (2026-09-08 — tracks statements/chases
 # sent to customers for overdue invoices).
 from .invoice_reminder import (

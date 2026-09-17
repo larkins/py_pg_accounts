@@ -41,6 +41,19 @@ from app.shared.aba import (
     _format_amount_cents,
 )
 from app.shared.super_csv import build_super_csv, COLUMN_ORDER, _split_name as _super_split_name
+from app.shared.saff_csv import build_saff_csv, _normalize_tfn, COLUMNS as SAFF_COLUMNS
+
+
+# App context fixture — the SAFF/Super CSV builders now read fund
+# identifiers and the business name from the system_settings table, which
+# requires a live app context. Tests that call these builders get one
+# via this autouse fixture.
+@pytest.fixture(autouse=True)
+def _app_context():
+    from app import create_app
+    app = create_app()
+    with app.app_context():
+        yield app
 
 
 # ---------------------------------------------------------------------------
@@ -305,7 +318,7 @@ class TestSuperCsvSplitName:
 class TestBuildSuperCsv:
     def _row(self, **overrides):
         defaults = {
-            'member_number': '123456789',
+            'member_number': '999999999',
             'legal_name': 'Jessica Paul',
             'preferred_name': 'Jess',
             'date_of_birth': None,
@@ -388,7 +401,7 @@ class TestBuildSuperCsv:
         reader = csv.DictReader(io.StringIO(csv_text.lstrip('\ufeff')))
         rows = list(reader)
         assert len(rows) == 2
-        assert rows[0]['MemberNumber'] == '123456789'
+        assert rows[0]['MemberNumber'] == '999999999'
         assert rows[1]['MemberNumber'] == '987654321'
 
 
@@ -396,21 +409,20 @@ class TestBuildSuperCsv:
 # SAFF tests (added 2026-09-17 alongside the live SAFF builder)
 # ---------------------------------------------------------------------------
 
-from app.shared.saff_csv import build_saff_csv, _normalize_tfn, COLUMNS as SAFF_COLUMNS, AUSTRALIAN_SUPER_ABN, AUSTRALIAN_SUPER_USI
 
 
 class TestNormalizeTfn:
     def test_bare_digits_pass_through(self):
-        assert _normalize_tfn('***REMOVED***') == '***REMOVED***'
+        assert _normalize_tfn('999999999') == '999999999'
 
     def test_spaces_stripped(self):
-        assert _normalize_tfn('107 075 250') == '***REMOVED***'
+        assert _normalize_tfn('999 999 999') == '999999999'
 
     def test_hyphens_stripped(self):
-        assert _normalize_tfn('107-075-250') == '***REMOVED***'
+        assert _normalize_tfn('999-999-999') == '999999999'
 
     def test_dots_stripped(self):
-        assert _normalize_tfn('107.075.250') == '***REMOVED***'
+        assert _normalize_tfn('999.999.999') == '999999999'
 
     def test_empty_returns_empty(self):
         assert _normalize_tfn('') == ''
@@ -421,7 +433,7 @@ class TestNormalizeTfn:
         # rather than emitted in a malformed shape. Caller can decide what
         # to do with the empty value (skip the row, error out, etc.).
         assert _normalize_tfn('12345') == ''
-        assert _normalize_tfn('1234567890') == ''
+        assert _normalize_tfn('9999999990') == ''
         assert _normalize_tfn('abc') == ''
 
 
@@ -432,11 +444,11 @@ class TestBuildSaff:
         from decimal import Decimal
         from datetime import date
         defaults = {
-            'member_number': '123456789',
+            'member_number': '999999999',
             'family_name': 'Paul',
             'given_name': 'Jessica',
-            'tfn': '***REMOVED***',
-            'date_of_birth': date(2000, 8, 29),
+            'tfn': '999999999',
+            'date_of_birth': date(2000, 1, 1),
             'pay_period_start': date(2026, 9, 8),
             'pay_period_end': date(2026, 9, 14),
             'transaction_date': date(2026, 9, 17),
@@ -466,24 +478,24 @@ class TestBuildSaff:
         assert len(rows) == 1
         row = rows[0]
         # TFN is the bare 9-digit string
-        assert row['TFN'] == '***REMOVED***'
+        assert row['TFN'] == '999999999'
         # DOB is the ISO date
-        assert row['DateOfBirth'] == '***REMOVED***'
+        assert row['DateOfBirth'] == '2000-01-01'
 
     def test_aus_super_abn_and_usi_are_populated(self):
         saff = build_saff_csv([self._row()])
         rows = self._parse_data_rows(saff)
         row = rows[0]
-        assert row['PayeeABN'] == AUSTRALIAN_SUPER_ABN
-        assert row['PayeeUSI'] == AUSTRALIAN_SUPER_USI
+        assert row['PayeeABN'] == '65714394898'  # from system_settings
+        assert row['PayeeUSI'] == 'STA0100AU'  # from system_settings
         assert row['PayeeOrganisationName'] == 'AustralianSuper'
 
     def test_spaces_in_tfn_input_are_normalised(self):
-        """Pasting '107 075 250' into the export should still produce the
+        """Pasting '999 999 999' into the export should still produce the
         bare 9-digit form expected by clearing houses."""
-        saff = build_saff_csv([self._row(tfn='107 075 250')])
+        saff = build_saff_csv([self._row(tfn='999 999 999')])
         rows = self._parse_data_rows(saff)
-        assert rows[0]['TFN'] == '***REMOVED***'
+        assert rows[0]['TFN'] == '999999999'
 
     def test_missing_tfn_emits_empty(self):
         saff = build_saff_csv([self._row(tfn=None)])

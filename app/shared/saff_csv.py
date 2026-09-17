@@ -44,13 +44,26 @@ from datetime import date
 
 
 # AustralianSuper identifiers (used for the payee/receiver context).
-# Confirmed via AusSuper's portal fund lookup on 2026-09-17 (Michael
-# entered '65 714 394 864' in the lookup tool and saw the corrected
-# values: ABN ends in 898, USI is STA0100AU). NOTE: do NOT trust
-# external AI-generated identifiers — the numbers originally here were
-# wrong (last two digits of the ABN were off; USI was fabricated).
-AUSTRALIAN_SUPER_ABN = os.environ.get('AUSTRALIAN_SUPER_ABN', '65714394898')
-AUSTRALIAN_SUPER_USI = os.environ.get('AUSTRALIAN_SUPER_USI', 'STA0100AU')
+# Default fund identifiers — read at runtime from system_settings
+# (see app/models/system_setting.py for lookup precedence). The
+# AusSuper defaults are seeded into the table by seed_defaults() on app
+# boot, so existing installations get the same values without manual
+# setup. New deployments can override via the table or via env vars
+# (`SETTING_DEFAULT_FUND_ABN` / `SETTING_DEFAULT_FUND_USI` /
+# `SETTING_DEFAULT_FUND_NAME`).
+
+def _resolve_payee_defaults():
+    """Read payee ABN/USI/org from system_settings, with env-var fallback.
+
+    Called on every build_saff_csv() invocation so admin changes via
+    PUT /api/settings/<key> take effect immediately without restart.
+    """
+    from app.models.system_setting import get_setting
+    return {
+        'payee_abn': get_setting('DEFAULT_FUND_ABN'),
+        'payee_usi': get_setting('DEFAULT_FUND_USI'),
+        'payee_org_name': get_setting('DEFAULT_FUND_NAME'),
+    }
 
 
 # SAFF column layout. This is a pragmatic subset of the ATO Standard's
@@ -201,15 +214,23 @@ def build_saff_csv(rows, file_id=None, options=None):
 
     options = options or {}
 
-    # Default fund identifiers (AustralianSuper).
-    payee_abn = options.get('payee_abn') or AUSTRALIAN_SUPER_ABN
-    payee_usi = options.get('payee_usi') or AUSTRALIAN_SUPER_USI
-    payee_org_name = options.get('payee_org_name') or 'AustralianSuper'
+    # Default fund identifiers — read from system_settings table.
+    payee_defaults = _resolve_payee_defaults()
+    payee_abn = options.get('payee_abn') or payee_defaults['payee_abn']
+    payee_usi = options.get('payee_usi') or payee_defaults['payee_usi']
+    payee_org_name = options.get('payee_org_name') or payee_defaults['payee_org_name']
+
+    # Payer (employer) identifiers. payer_abn/bsb/account come from the
+    # User row at call time (passed in via options). payer_org_name and
+    # payer_account_name default to the BUSINESS_NAME setting so they
+    # don't have to be threaded through every caller.
+    from app.models.system_setting import get_setting as _gs
+    business_name = _gs('BUSINESS_NAME')
     payer_abn = options.get('payer_abn', '')
-    payer_org_name = options.get('payer_org_name', 'Peristyle')
-    payer_bsb = options.get('payer_bsb', '084-004')
-    payer_account = options.get('payer_account', '138394380')
-    payer_account_name = options.get('payer_account_name', 'Peristyle')
+    payer_org_name = options.get('payer_org_name') or business_name
+    payer_bsb = options.get('payer_bsb', '')
+    payer_account = options.get('payer_account', '')
+    payer_account_name = options.get('payer_account_name') or business_name
 
     sender_abn = options.get('sender_abn', payer_abn)
     payroll_frequency = options.get('payroll_frequency', 'Weekly')
@@ -263,7 +284,7 @@ def build_saff_csv(rows, file_id=None, options=None):
             'SourceElectronicServiceAddress': '',
             'ElectronicErrorMessaging': '',
             'SenderABN': sender_abn,
-            'SenderOrganisationName': 'Peristyle',
+            'SenderOrganisationName': payer_org_name,
             'SenderFamilyName': '',
             'SenderGivenName': '',
             'SenderOtherGivenName': '',
