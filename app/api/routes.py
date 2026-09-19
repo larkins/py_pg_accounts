@@ -1,3 +1,4 @@
+from decimal import Decimal
 from flask import Blueprint, request, jsonify, current_app, send_file
 from werkzeug.utils import secure_filename
 import os
