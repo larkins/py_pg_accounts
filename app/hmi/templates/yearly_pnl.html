@@ -7,6 +7,7 @@
     <h2>Yearly P&L Report</h2>
 
     <form method="POST" class="filter-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="form-group">
             <label for="year">Financial Year</label>
             <select id="year" name="year">

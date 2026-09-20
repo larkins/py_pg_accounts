@@ -23,6 +23,7 @@
         Use this when the accountant needs a clean baseline.
     </p>
     <form method="POST" action="{{ url_for('hmi.xero_export_download') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="mode" value="all">
         <label style="display: block; margin-bottom: 0.75rem;">
             <input type="checkbox" name="include_drafts" checked>
@@ -39,6 +40,7 @@
         specific period or handing over a partial year.
     </p>
     <form method="POST" action="{{ url_for('hmi.xero_export_download') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="mode" value="custom">
         <div class="filter-form">
             <div class="form-group">

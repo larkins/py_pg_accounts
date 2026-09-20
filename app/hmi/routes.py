@@ -13,6 +13,7 @@ from app.models.expense import Expense
 from app.models.invoice import Invoice
 from app.models.account_category import AccountCategory
 from app.models.activity_log import ActivityLog
+from app.shared.rate_limiter import rate_limit_hmi, record_attempt, _get_client_ip
 
 hmi_bp = Blueprint('hmi', __name__)
 
@@ -28,6 +29,7 @@ def login_required(f):
 
 
 @hmi_bp.route('/login', methods=['GET', 'POST'])
+@rate_limit_hmi('login.html')
 def login():
     if request.method == 'POST':
         email = request.form.get('email', '').strip().lower()
@@ -37,12 +39,15 @@ def login():
             flash('Email and password are required', 'error')
             return render_template('login.html')
 
+        client_ip = _get_client_ip()
         user = User.query.filter_by(email=email).first()
 
         if not user or not user.check_password(password):
+            record_attempt(client_ip, success=False)
             flash('Invalid email or password', 'error')
             return render_template('login.html')
 
+        record_attempt(client_ip, success=True)
         session['user_id'] = user.id
         session['user_email'] = user.email
         flash('Logged in successfully', 'success')
@@ -60,37 +65,9 @@ def logout():
 
 @hmi_bp.route('/register', methods=['GET', 'POST'])
 def register():
-    if request.method == 'POST':
-        email = request.form.get('email', '').strip().lower()
-        password = request.form.get('password', '')
-        confirm_password = request.form.get('confirm_password', '')
-
-        if not email or not password:
-            flash('Email and password are required', 'error')
-            return render_template('register.html')
-
-        if password != confirm_password:
-            flash('Passwords do not match', 'error')
-            return render_template('register.html')
-
-        if User.query.filter_by(email=email).first():
-            flash('Email already registered', 'error')
-            return render_template('register.html')
-
-        user = User(email=email, country='AU')
-        user.set_password(password)
-        token = user.generate_verification_token()
-
-        db.session.add(user)
-        db.session.commit()
-
-        verification_url = url_for('hmi.verify_email', token=token, _external=True)
-        flash(f'Registration successful! Your verification token is: {token}', 'success')
-        flash(f'Please verify your email at: {verification_url}', 'info')
-
-        return redirect(url_for('hmi.login'))
-
-    return render_template('register.html')
+    # Open registration is disabled. Accounts are created by an admin.
+    flash('Registration is disabled. Contact an administrator.', 'error')
+    return redirect(url_for('hmi.login'))
 
 
 @hmi_bp.route('/verify/<token>')

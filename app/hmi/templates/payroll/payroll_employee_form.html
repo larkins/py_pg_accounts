@@ -7,6 +7,7 @@
     <h2>{% if employee %}Edit Employee{% else %}New Employee{% endif %}</h2>
 
     <form method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="form-row" style="display: flex; gap: 1rem; flex-wrap: wrap;">
             <div class="form-group" style="flex: 1; min-width: 240px;">
                 <label for="legal_name">Legal Name *</label>

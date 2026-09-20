@@ -49,6 +49,7 @@
                     <a href="{{ url_for('hmi.download_invoice_pdf', invoice_id=invoice.id) }}" class="btn btn-primary btn-small" title="Download PDF">PDF</a>
                     <a href="{{ url_for('hmi.edit_invoice', invoice_id=invoice.id) }}" class="btn btn-secondary btn-small">Edit</a>
                     <form method="POST" action="{{ url_for('hmi.delete_invoice', invoice_id=invoice.id) }}" style="display: inline;">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button type="submit" class="btn btn-danger btn-small" onclick="return confirm('Are you sure?')">Delete</button>
                     </form>
                 </td>

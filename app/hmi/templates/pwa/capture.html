@@ -21,6 +21,7 @@
         <p>Take a photo or upload a receipt image. The details will be extracted automatically via OCR.</p>
 
         <form method="POST" action="{{ url_for('pwa.upload') }}" enctype="multipart/form-data" id="receiptForm">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div class="form-group">
                 <label>Receipt Photo</label>
                 <input type="file" id="fileInput" name="file" accept="image/*" capture="environment" style="display: none;">

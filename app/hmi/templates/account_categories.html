@@ -7,6 +7,7 @@
     <h2>Account Categories</h2>
 
     <form method="POST" action="{{ url_for('hmi.new_account_category') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="form-row">
             <div class="form-group">
                 <label for="name">New Category Name</label>
@@ -38,6 +39,7 @@
                 <td>{{ category.created_at.strftime('%Y-%m-%d') }}</td>
                 <td class="actions">
                     <form method="POST" action="{{ url_for('hmi.delete_account_category', category_id=category.id) }}" style="display: inline;">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button type="submit" class="btn btn-danger btn-small" onclick="return confirm('Are you sure? This will not delete associated expenses or invoices.')">Delete</button>
                     </form>
                 </td>

@@ -1,4 +1,5 @@
 from flask import Flask
+from flask_wtf.csrf import CSRFProtect
 import yaml
 import os
 
@@ -38,9 +39,24 @@ def create_app(config_path=None):
         db_url = f"postgresql://{os.environ.get('DB_USER', 'postgres')}:{os.environ.get('DB_PASSWORD', '')}@{os.environ.get('DB_HOST', 'localhost')}:{os.environ.get('DB_PORT', '5432')}/{os.environ.get('DB_NAME', 'py_pg_accounts')}"
     app.config['SQLALCHEMY_DATABASE_URI'] = db_url
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-    app.config['SECRET_KEY'] = config['app'].get('secret_key', 'dev-secret-key')
+    
+    # SECRET_KEY: no default — fail to start without it
+    secret_key = config['app'].get('secret_key') or os.environ.get('SECRET_KEY')
+    if not secret_key or secret_key == 'dev-secret-key':
+        raise RuntimeError(
+            'SECRET_KEY environment variable is required. '
+            'Set it in .env or config.yaml. Do not use the default.'
+        )
+    app.config['SECRET_KEY'] = secret_key
+    
     app.config['UPLOAD_FOLDER'] = config['app'].get('upload_folder', 'uploads')
     app.config['MAX_CONTENT_LENGTH'] = config['app'].get('max_content_length', 10485760)
+
+    # Session cookie security
+    app.config['SESSION_COOKIE_SECURE'] = os.environ.get('SESSION_COOKIE_SECURE', 'True').lower() == 'true'
+    app.config['SESSION_COOKIE_HTTPONLY'] = True
+    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+    app.config['PERMANENT_SESSION_LIFETIME'] = 86400  # 24 hours
 
     app.config['VISION_OLLAMA_HOST'] = config.get('vision', {}).get('ollama_host', 'http://localhost:11434')
     app.config['VISION_MODEL'] = config.get('vision', {}).get('model', 'gemma4:31b')
@@ -61,6 +77,14 @@ def create_app(config_path=None):
     from app.hmi.routes import hmi_bp
     from app.hmi.payroll import payroll_hmi_bp
     from app.pwa.routes import pwa_bp
+
+    # CSRF protection for HMI/PWA forms (cookie-based auth)
+    # API blueprints are exempt — they use X-API-Key header auth, not cookies
+    csrf = CSRFProtect(app)
+    for bp in (api_bp, reports_bp, payroll_api_bp, bas_bp, bank_txn_bp,
+               invoice_reminders_bp, payment_recon_bp, xero_export_bp,
+               payroll_exports_bp, settings_bp):
+        csrf.exempt(bp)
 
     app.register_blueprint(api_bp)
     app.register_blueprint(reports_bp)

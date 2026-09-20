@@ -12,6 +12,7 @@ from app.models.account_category import AccountCategory
 from app.models.activity_log import ActivityLog
 from app.models.customer import Customer
 from app.shared.decorators import api_key_required, log_activity
+from app.shared.rate_limiter import rate_limit_api, record_attempt, _get_client_ip
 from app.shared.validators import validate_decimal, validate_date_string, validate_gst_type, validate_uuid
 from app.shared.address import validate_state, validate_postcode
 
@@ -82,31 +83,13 @@ def _validate_and_normalize_address(data, country_default='Australia', country_f
 
 @api_bp.route('/auth/register', methods=['POST'])
 def register():
-    data = request.get_json()
-
-    if not data:
-        return jsonify({'error': 'No data provided'}), 400
-
-    email = data.get('email', '').strip().lower()
-    password = data.get('password', '')
-    country = data.get('country', 'AU')
-
-    if not email or not password:
-        return jsonify({'error': 'Email and password required'}), 400
-
-    if User.query.filter_by(email=email).first():
-        return jsonify({'error': 'Email already registered'}), 409
-
-    user = User(email=email, country=country)
-    user.set_password(password)
-
-    db.session.add(user)
-    db.session.commit()
-
-    return jsonify({'message': 'User registered successfully', 'user': user.to_dict()}), 201
+    # Open registration is disabled. Accounts are created by an admin
+    # via the HMI or directly in the database.
+    return jsonify({'error': 'Registration is disabled. Contact an administrator.'}), 403
 
 
 @api_bp.route('/auth/login', methods=['POST'])
+@rate_limit_api
 def login():
     data = request.get_json()
 
@@ -119,11 +102,14 @@ def login():
     if not email or not password:
         return jsonify({'error': 'Email and password required'}), 400
 
+    client_ip = _get_client_ip()
     user = User.query.filter_by(email=email).first()
 
     if not user or not user.check_password(password):
+        record_attempt(client_ip, success=False)
         return jsonify({'error': 'Invalid credentials'}), 401
 
+    record_attempt(client_ip, success=True)
     return jsonify({'message': 'Login successful', 'user': user.to_dict()}), 200
 
 

@@ -42,10 +42,11 @@
         {% if event.status == 'draft' %}
         <a href="{{ url_for('payroll_hmi.payroll_pay_event_edit', pay_event_id=event.id) }}" class="btn btn-secondary">Edit</a>
         <form method="POST" action="{{ url_for('payroll_api.finalize_pay_event', pay_event_id=event.id) }}" style="display: inline;">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-primary">Finalize</button>
         </form>
         <form method="POST" action="{{ url_for('payroll_api.cancel_pay_event', pay_event_id=event.id) }}" style="display: inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-danger" onclick="return confirm('Cancel this event?')">Cancel</button>
         </form>
         {% endif %}
@@ -53,11 +54,13 @@
         {% if event.status in ('finalized', 'paid') %}
         <a href="/api/payroll/pay-events/{{ event.id }}/pdf" class="btn btn-secondary" target="_blank">Download PDF</a>
         <form method="POST" action="{{ url_for('payroll_api.mark_pay_event_paid', pay_event_id=event.id) }}" style="display: inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             {% if event.status == 'finalized' %}
             <button type="submit" class="btn btn-primary">Mark Paid</button>
             {% endif %}
         </form>
         <form method="POST" action="{{ url_for('payroll_api.send_payslip', pay_event_id=event.id) }}" style="display: inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-primary">Send Payslip</button>
         </form>
         {% endif %}

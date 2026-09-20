@@ -7,6 +7,7 @@
     <h2>{% if event %}Edit Pay Event{% else %}New Pay Event{% endif %}</h2>
 
     <form method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="form-row" style="display: flex; gap: 1rem; flex-wrap: wrap;">
             <div class="form-group" style="flex: 1; min-width: 280px;">
                 <label for="employee_id">Employee *</label>

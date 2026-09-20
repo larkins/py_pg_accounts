@@ -7,6 +7,7 @@
     <h2>{{ 'Edit Invoice' if invoice else 'New Invoice' }}</h2>
 
     <form method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="form-group">
             <label for="client_name">Client Name *</label>
             <input type="text" id="client_name" name="client_name" required value="{{ client_name or (invoice.client_name if invoice) }}">

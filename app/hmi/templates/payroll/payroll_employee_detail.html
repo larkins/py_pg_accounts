@@ -41,6 +41,7 @@
         <a href="{{ url_for('payroll_hmi.payroll_pay_event_new', employee_id=employee.id) }}" class="btn btn-primary">+ New Pay Event</a>
         {% if employee.employment_status == 'active' %}
         <form method="POST" action="{{ url_for('payroll_hmi.payroll_employee_terminate', employee_id=employee.id) }}" style="display: inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-danger" onclick="return confirm('Terminate this employee?')">Terminate</button>
         </form>
         {% endif %}

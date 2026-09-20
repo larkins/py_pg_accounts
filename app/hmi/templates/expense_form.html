@@ -7,6 +7,7 @@
     <h2>{{ 'Edit Expense' if expense else 'New Expense' }}</h2>
 
     <form method="POST" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="form-group">
             <label for="vendor_name">Vendor Name *</label>
             <input type="text" id="vendor_name" name="vendor_name" required value="{{ vendor_name or (expense.vendor_name if expense) }}">
