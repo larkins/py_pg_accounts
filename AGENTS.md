@@ -37,10 +37,40 @@ Throughout this document, `localhost:5061` is used as the API base URL in exampl
 
 ## Authentication
 
+### Registration (Disabled)
+
+Open registration is **disabled** as of the 2026-09-20 security hardening. Both the API (`POST /auth/register`) and HMI (`/register`) endpoints return 403/redirect with "Contact an administrator".
+
+To create a new account, an admin must insert directly into the database:
+
+```sql
+-- Generate a bcrypt hash for the password first:
+-- python3 -c "from werkzeug.security import generate_password_hash; print(generate_password_hash('thepassword'))"
+
+INSERT INTO users (email, password_hash, country, email_verified)
+VALUES ('user@example.com', '<bcrypt_hash>', 'AU', TRUE);
+```
+
+Or via Python shell:
+```python
+from app import create_app
+from app.models import db
+from app.models.user import User
+
+app = create_app()
+with app.app_context():
+    user = User(email='user@example.com', country='AU')
+    user.set_password('thepassword')
+    user.email_verified = True
+    db.session.add(user)
+    db.session.commit()
+    print(f'Created user {user.id}')
+```
+
 ### For API Access
-1. User registers via HMI at `/login` → `/register`
-2. After registration, user must verify email at `/verify/<token>`
-3. User generates API key at `/api-key` (requires email verification)
+1. Admin creates account (see above)
+2. User logs in via HMI at `/login`
+3. User generates API key at `/api-key`
 4. API key is passed in requests for authentication
 
 ### API Authentication
@@ -53,7 +83,17 @@ The same API endpoints also accept HMI session cookies (set after login) — so 
 ### For HMI Access
 - Standard email/password login at `/login`
 - Session-based authentication
-- Email verification NOT required for HMI login
+- Rate limited: 5 failed attempts per IP per 15 min → 15-min lockout
+
+### Security Hardening (2026-09-20)
+
+- **SECRET_KEY**: Required — no default. App raises `RuntimeError` on startup if not set or set to `'dev-secret-key'`.
+- **CSRF**: Flask-WTF CSRFProtect on all HMI/PWA forms. API blueprints exempt (X-API-Key auth, not cookies).
+- **Session cookies**: `Secure`, `HttpOnly`, `SameSite=Lax`. `SESSION_COOKIE_SECURE` defaults to `True` (override via env for local dev without HTTPS).
+- **Rate limiting**: Login endpoints limited to 5 failed attempts per IP per 15-minute window.
+- **Registration**: Disabled on both API and HMI.
+
+See `SECURITY_SWEEP.md` for the full audit.
 
 ## Database Schema
 

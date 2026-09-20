@@ -64,11 +64,13 @@ skill = AccountingSkill(api_key="...", base_url="http://127.0.0.1:5061")
 
 ### Getting an API key
 
-1. Register via HMI at `/login` → `/register`
-2. Verify email at `/verify/<token>`
-3. Generate API key at `/api-key` (requires email verification)
+1. Admin creates account (open registration is disabled — see below)
+2. User logs in via HMI at `/login`
+3. Generate API key at `/api-key`
 
-The skill itself has a top-level `register_user(email, password)` for programmatic registration (no API key needed).
+**Registration is disabled** as of 2026-09-20. Accounts must be created by an admin via the database or Python shell. See AGENTS.md for instructions.
+
+The skill's `register_user(email, password)` method will return 403.
 
 ## Business profile
 
@@ -209,6 +211,15 @@ All dates use ISO 8601: `YYYY-MM-DD` (or full ISO-8601 datetime for fields like 
 - **PDF generation**: server-side, ReportLab
 - **OCR pipeline** (since 2026-08-04): local tesseract + regex parser. Vision LLM pipeline deprecated.
 - **PII encryption**: payroll PII fields (TFN, bank details) encrypted at rest via Fernet, key in `PAYROLL_PII_KEY` env var
+
+## Security (2026-09-20 hardening)
+
+- **SECRET_KEY**: Required, no default. App won't start without it.
+- **CSRF**: All HMI/PWA forms protected via Flask-WTF. API exempt (X-API-Key auth).
+- **Session cookies**: Secure, HttpOnly, SameSite=Lax.
+- **Rate limiting**: Login endpoints — 5 failures per IP per 15 min → 15-min lockout.
+- **Registration**: Disabled. Admin-created accounts only.
+- **Full audit**: See `SECURITY_SWEEP.md` in the repo root.
 
 ## Common workflows
 
