@@ -393,9 +393,8 @@ def list_reminders_for_invoice(invoice_id):
 @invoice_reminders_bp.route('/customers/<customer_id>/reminders', methods=['GET'])
 @api_key_required
 def list_reminders_for_customer(customer_id):
-    # Customers aren't user-scoped (consistent with /api/customers endpoints
-    # in app/api/routes.py); reminders carry their own user_id.
-    cust = Customer.query.get(customer_id)
+    # Customers are user-scoped; reminders carry their own user_id.
+    cust = Customer.query.filter_by(id=customer_id, user_id=request.current_user.id).first()
     if not cust:
         return jsonify({'error': 'Customer not found'}), 404
 

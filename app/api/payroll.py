@@ -54,10 +54,13 @@ Idempotency:
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 import io
+import logging
 import os
 
 from flask import Blueprint, request, jsonify, current_app, send_file
 from sqlalchemy import or_, func
+
+logger = logging.getLogger(__name__)
 
 from app.models import db
 from app.models.employee import Employee
@@ -194,7 +197,8 @@ def create_employee():
         if data.get('super_rate_pct') not in (None, ''):
             e.super_rate_pct = validate_decimal(data['super_rate_pct'], min_value=0, max_value=100)
     except ValueError as exc:
-        return _err(str(exc), 400)
+        logger.warning('Validation error in create_employee (amounts): %s', exc)
+        return _err('Invalid amount', 400)
 
     try:
         if data.get('start_date'):
@@ -202,7 +206,8 @@ def create_employee():
         if data.get('end_date'):
             e.end_date = validate_date_string(data['end_date'])
     except ValueError as exc:
-        return _err(str(exc), 400)
+        logger.warning('Validation error in create_employee (dates): %s', exc)
+        return _err('Invalid date format', 400)
 
     try:
         if 'tfn' in data and data['tfn'] != '':
@@ -212,7 +217,8 @@ def create_employee():
         if 'bank_account_number' in data and data['bank_account_number'] != '':
             e.bank_account_number_plain = data['bank_account_number']
     except Exception as exc:
-        return _err(f'PII encryption failed: {exc}', 500)
+        logger.error('PII encryption failed in create_employee: %s', exc, exc_info=True)
+        return _err('Internal server error', 500)
 
     db.session.add(e)
     db.session.commit()
@@ -293,7 +299,8 @@ def update_employee(employee_id):
                                  if val not in (None, '')
                                  else Decimal('12.00'))
     except ValueError as exc:
-        return _err(str(exc), 400)
+        logger.warning('Validation error in update_employee (amounts): %s', exc)
+        return _err('Invalid amount', 400)
 
     try:
         if 'start_date' in data:
@@ -301,7 +308,8 @@ def update_employee(employee_id):
         if 'end_date' in data:
             e.end_date = validate_date_string(data['end_date'])
     except ValueError as exc:
-        return _err(str(exc), 400)
+        logger.warning('Validation error in update_employee (dates): %s', exc)
+        return _err('Invalid date format', 400)
 
     try:
         if 'tfn' in data:
@@ -313,7 +321,8 @@ def update_employee(employee_id):
                                             if data['bank_account_number'] != ''
                                             else None)
     except Exception as exc:
-        return _err(f'PII encryption failed: {exc}', 500)
+        logger.error('PII encryption failed in update_employee: %s', exc, exc_info=True)
+        return _err('Internal server error', 500)
 
     log_activity(
         user_id=user_id, action='UPDATE', table_name='employees',
@@ -391,12 +400,14 @@ def list_pay_events():
         try:
             q = q.filter(PayEvent.payment_date >= validate_date_string(request.args['start_date']))
         except ValueError as exc:
-            return _err(str(exc), 400)
+            logger.warning('Invalid start_date in list_pay_events: %s', exc)
+            return _err('Invalid date format', 400)
     if request.args.get('end_date'):
         try:
             q = q.filter(PayEvent.payment_date <= validate_date_string(request.args['end_date']))
         except ValueError as exc:
-            return _err(str(exc), 400)
+            logger.warning('Invalid end_date in list_pay_events: %s', exc)
+            return _err('Invalid date format', 400)
 
     status = (request.args.get('status') or '').strip()
     if status:
@@ -427,7 +438,8 @@ def create_pay_event():
         payg_tax_amount = validate_decimal(data.get('payg_tax_amount'), min_value=0)
         net_amount = validate_decimal(data.get('net_amount'), min_value=0)
     except (ValueError, TypeError) as exc:
-        return _err(f'Invalid required field: {exc}', 400)
+        logger.warning('Invalid required field in create_pay_event: %s', exc)
+        return _err('Invalid input', 400)
 
     if pay_period_end < pay_period_start:
         return _err('pay_period_end must be >= pay_period_start', 400)
@@ -445,7 +457,8 @@ def create_pay_event():
             else None
         )
     except ValueError as exc:
-        return _err(str(exc), 400)
+        logger.warning('Validation error in create_pay_event (super): %s', exc)
+        return _err('Invalid amount', 400)
 
     super_payable_amount = (
         explicit_super_payable
@@ -481,7 +494,8 @@ def create_pay_event():
             try:
                 amount = validate_decimal(line.get('amount'), required=True)
             except ValueError as exc:
-                return _err(f'Invalid line amount: {exc}', 400)
+                logger.warning('Invalid line amount in create_pay_event: %s', exc)
+                return _err('Invalid line amount', 400)
             db.session.add(PayEventLine(
                 pay_event_id=pe.id,
                 line_type=(line.get('line_type') or 'earning'),
@@ -565,7 +579,8 @@ def update_pay_event(pay_event_id):
         if 'pay_period_end' in data:
             pe.pay_period_end = validate_date_string(data['pay_period_end'])
     except ValueError as exc:
-        return _err(str(exc), 400)
+        logger.warning('Validation error in update_pay_event (dates): %s', exc)
+        return _err('Invalid date format', 400)
 
     if pe.pay_period_end < pe.pay_period_start:
         return _err('pay_period_end must be >= pay_period_start', 400)
@@ -576,7 +591,8 @@ def update_pay_event(pay_event_id):
             if attr in data and data[attr] not in (None, ''):
                 setattr(pe, attr, validate_decimal(data[attr], min_value=0))
     except ValueError as exc:
-        return _err(str(exc), 400)
+        logger.warning('Validation error in update_pay_event (amounts): %s', exc)
+        return _err('Invalid amount', 400)
 
     for attr in ('pay_frequency', 'position_snapshot', 'bank_reference', 'notes'):
         if attr in data:
@@ -589,7 +605,8 @@ def update_pay_event(pay_event_id):
         try:
             pe.super_paid_date = validate_date_string(data['super_paid_date'])
         except ValueError as exc:
-            return _err(str(exc), 400)
+            logger.warning('Invalid super_paid_date in update_pay_event: %s', exc)
+            return _err('Invalid date format', 400)
 
     log_activity(
         user_id=user_id, action='UPDATE', table_name='pay_events',
@@ -636,12 +653,14 @@ def mark_pay_event_paid(pay_event_id):
         try:
             pe.super_paid_amount = validate_decimal(data['super_paid_amount'], min_value=0)
         except ValueError as exc:
-            return _err(str(exc), 400)
+            logger.warning('Invalid super_paid_amount in mark_pay_event_paid: %s', exc)
+            return _err('Invalid amount', 400)
     if data.get('super_paid_date'):
         try:
             pe.super_paid_date = validate_date_string(data['super_paid_date'])
         except ValueError as exc:
-            return _err(str(exc), 400)
+            logger.warning('Invalid super_paid_date in mark_pay_event_paid: %s', exc)
+            return _err('Invalid date format', 400)
 
     if pe.status != 'paid':
         pe.status = 'paid'
@@ -734,8 +753,8 @@ def generate_payslip(pay_event_id):
     try:
         path = _generate_payslip_pdf(request.current_user, employee, pe)
     except Exception as exc:
-        current_app.logger.exception('PDF generation failed')
-        return _err(f'PDF generation failed: {exc}', 500)
+        logger.error('PDF generation failed in generate_payslip: %s', exc, exc_info=True)
+        return _err('Internal server error', 500)
 
     rel = os.path.relpath(path, os.path.abspath(
         current_app.config.get('UPLOAD_FOLDER', 'uploads')))
@@ -769,8 +788,8 @@ def download_payslip(pay_event_id):
             pe.payslip_pdf_path = rel
             db.session.commit()
         except Exception as exc:
-            current_app.logger.exception('PDF generation failed')
-            return _err(f'PDF generation failed: {exc}', 500)
+            logger.error('PDF generation failed in download_payslip: %s', exc, exc_info=True)
+            return _err('Internal server error', 500)
 
     filename = f'payslip-{pe.id[:8]}-{pe.payment_date.isoformat()}.pdf'
     return send_file(path, mimetype='application/pdf', as_attachment=True,
@@ -823,7 +842,8 @@ def send_payslip(pay_event_id):
         try:
             pdf_path = _generate_payslip_pdf(user, employee, pe)
         except Exception as exc:
-            return _err(f'PDF generation failed: {exc}', 500)
+            logger.error('PDF generation failed in send_payslip: %s', exc, exc_info=True)
+            return _err('Internal server error', 500)
 
     targets = []
     if employee.email_work:
@@ -957,8 +977,9 @@ def send_payslip(pay_event_id):
                 d.mail_api_response = {'status_code': r.status_code, 'body': r.text[:500]}
         except Exception as exc:
             d.delivery_status = 'failed'
+            # Stored in DB for server-side debugging only — not sent to client.
             d.error_message = str(exc)
-            current_app.logger.warning('Mail send failed for %s: %s', email_addr, exc)
+            logger.warning('Mail send failed for %s: %s', email_addr, exc)
         db.session.commit()
         mail_results.append(d.to_dict())
 
@@ -987,12 +1008,14 @@ def list_super_payments():
         try:
             q = q.filter(SuperPayment.remittance_date >= validate_date_string(request.args['start_date']))
         except ValueError as exc:
-            return _err(str(exc), 400)
+            logger.warning('Invalid start_date in list_super_payments: %s', exc)
+            return _err('Invalid date format', 400)
     if request.args.get('end_date'):
         try:
             q = q.filter(SuperPayment.remittance_date <= validate_date_string(request.args['end_date']))
         except ValueError as exc:
-            return _err(str(exc), 400)
+            logger.warning('Invalid end_date in list_super_payments: %s', exc)
+            return _err('Invalid date format', 400)
 
     rows = q.order_by(SuperPayment.remittance_date.desc()).all()
     return _ok({'super_payments': [sp.to_dict() for sp in rows]})
@@ -1019,7 +1042,8 @@ def create_super_payment():
         remittance_date = validate_date_string(data.get('remittance_date'))
         amount = validate_decimal(data.get('amount'), min_value=0)
     except (ValueError, TypeError) as exc:
-        return _err(f'Invalid required field: {exc}', 400)
+        logger.warning('Invalid required field in create_super_payment: %s', exc)
+        return _err('Invalid input', 400)
 
     # Validate each pay_event_id belongs to this user/employee
     if pay_event_ids:

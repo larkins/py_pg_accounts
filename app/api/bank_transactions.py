@@ -16,9 +16,12 @@ The model is defined in app.models.bank_transaction.BankTransaction.
 """
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
+import logging
 
 from flask import Blueprint, request, jsonify, current_app
 from sqlalchemy import and_
+
+logger = logging.getLogger(__name__)
 
 from app.models import db, get_utc_now
 from app.models.bank_transaction import BankTransaction, BANK_TXN_METHODS, BANK_TXN_SOURCES
@@ -114,7 +117,8 @@ def create_bank_transaction():
         raw_source = _validate_source(data.get('raw_source'))
         settled_at = _parse_datetime(data.get('settled_at'), 'settled_at')
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        logger.warning('Validation error in create_bank_transaction: %s', e)
+        return jsonify({'error': 'Invalid input'}), 400
 
     invoice_id = data.get('invoice_id')
     invoice = None
@@ -165,7 +169,8 @@ def create_bank_transaction():
         db.session.commit()
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': f'Database error: {str(e)}'}), 500
+        logger.error('Database error in create_bank_transaction: %s', e, exc_info=True)
+        return jsonify({'error': 'Internal server error'}), 500
 
     log_activity(
         user_id=request.current_user.id,
@@ -228,7 +233,8 @@ def list_bank_transactions():
         date_from = _parse_date(request.args.get('date_from'), 'date_from', required=False)
         date_to = _parse_date(request.args.get('date_to'), 'date_to', required=False)
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        logger.warning('Validation error in list_bank_transactions: %s', e)
+        return jsonify({'error': 'Invalid date format'}), 400
     if date_from:
         q = q.filter(BankTransaction.transaction_date >= date_from)
     if date_to:
@@ -284,7 +290,8 @@ def update_bank_transaction(txn_id):
         if 'payer_account' in data:
             txn.payer_account = data['payer_account'] or None
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        logger.warning('Validation error in update_bank_transaction: %s', e)
+        return jsonify({'error': 'Invalid input'}), 400
 
     db.session.commit()
 

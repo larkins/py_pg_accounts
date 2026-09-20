@@ -328,8 +328,8 @@ def _build_contacts_csv(user_id, start_date, end_date):
 
     seen = set()
 
-    # Customers (global — not user-scoped per /api/customers behaviour)
-    for cust in Customer.query.order_by(Customer.name.asc()).all():
+    # Customers (user-scoped)
+    for cust in Customer.query.filter_by(user_id=user_id).order_by(Customer.name.asc()).all():
         key = cust.name.strip().lower()
         if not key or key in seen:
             continue

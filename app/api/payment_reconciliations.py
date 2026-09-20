@@ -90,7 +90,7 @@ def create_reconciliation():
     customer_id = data.get('customer_id')
     if not customer_id:
         return jsonify({'error': 'customer_id is required'}), 400
-    if not Customer.query.get(customer_id):
+    if not Customer.query.filter_by(id=customer_id, user_id=request.current_user.id).first():
         return jsonify({'error': 'Customer not found'}), 404
 
     invoice_id = data.get('invoice_id')

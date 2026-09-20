@@ -93,6 +93,7 @@ CREATE INDEX IF NOT EXISTS idx_expenses_requires_review ON expenses(requires_rev
 -- non-AU customers from countries we don't currently support).
 CREATE TABLE IF NOT EXISTS customers (
     id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v4()::text,
+    user_id VARCHAR(36) NOT NULL REFERENCES users(id),
     name VARCHAR(255) NOT NULL,
     contact_name VARCHAR(255),
     address_line1 VARCHAR(255),
@@ -110,6 +111,7 @@ CREATE TABLE IF NOT EXISTS customers (
 );
 
 -- Idempotent migration for existing installs (added 2026-09-17).
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS user_id VARCHAR(36) REFERENCES users(id);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS address_line1 VARCHAR(255);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS address_line2 VARCHAR(255);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS city VARCHAR(100);
@@ -130,6 +132,7 @@ ALTER TABLE employees ADD COLUMN IF NOT EXISTS phone VARCHAR(30);
 -- is safe to run on already-clean installs.
 ALTER TABLE customers DROP COLUMN IF EXISTS address;
 
+CREATE INDEX IF NOT EXISTS idx_customers_user_id ON customers(user_id);
 CREATE INDEX IF NOT EXISTS idx_customers_name ON customers(name);
 CREATE INDEX IF NOT EXISTS idx_customers_state ON customers(state);
 CREATE INDEX IF NOT EXISTS idx_customers_postcode ON customers(postcode);

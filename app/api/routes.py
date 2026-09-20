@@ -1,8 +1,11 @@
+import logging
 from decimal import Decimal
 from flask import Blueprint, request, jsonify, current_app, send_file
 from werkzeug.utils import secure_filename
 import os
 import io
+
+logger = logging.getLogger(__name__)
 
 from app.models import db, get_utc_now
 from app.models.user import User
@@ -224,7 +227,7 @@ def delete_account_category(category_id):
 @api_bp.route('/customers', methods=['GET'])
 @api_key_required
 def list_customers():
-    customers = Customer.query.order_by(Customer.name).all()
+    customers = Customer.query.filter_by(user_id=request.current_user.id).order_by(Customer.name).all()
     return jsonify({'customers': [c.to_dict() for c in customers]}), 200
 
 
@@ -234,7 +237,7 @@ def get_customer(customer_id):
     if not validate_uuid(customer_id):
         return jsonify({'error': 'Invalid customer ID'}), 400
 
-    customer = Customer.query.get(customer_id)
+    customer = Customer.query.filter_by(id=customer_id, user_id=request.current_user.id).first()
     if not customer:
         return jsonify({'error': 'Customer not found'}), 404
 
@@ -249,15 +252,13 @@ def get_customer(customer_id):
 #
 # Returns every invoice (paid + outstanding) for the customer that belongs to
 # the requesting user, plus totals + 30/60/90/90+ aging of the outstanding
-# balance. Invoices are scoped by user_id because invoices carry the user
-# (business-owner) dimension; customers are not user-scoped (shared across
-# users with valid API keys), consistent with /api/customers behaviour.
+# balance. Both invoices and customers are scoped by user_id (F-10).
 # -----------------------------------------------------------------------------
 def _build_statement_payload(user_id, customer_id, as_of_date):
     """Shared helper for both the JSON and PDF endpoints."""
     from datetime import date as _date, datetime as _datetime
 
-    customer = Customer.query.get(customer_id)
+    customer = Customer.query.filter_by(id=customer_id, user_id=user_id).first()
     if not customer:
         return None, None, None
 
@@ -419,6 +420,7 @@ def create_customer():
         return jsonify({'error': addr_error}), 400
 
     customer = Customer(
+        user_id=request.current_user.id,
         name=name,
         contact_name=data.get('contact_name'),
         address_line1=data.get('address_line1'),
@@ -455,7 +457,7 @@ def update_customer(customer_id):
     if not validate_uuid(customer_id):
         return jsonify({'error': 'Invalid customer ID'}), 400
 
-    customer = Customer.query.get(customer_id)
+    customer = Customer.query.filter_by(id=customer_id, user_id=request.current_user.id).first()
     if not customer:
         return jsonify({'error': 'Customer not found'}), 404
 
@@ -519,7 +521,7 @@ def delete_customer(customer_id):
     if not validate_uuid(customer_id):
         return jsonify({'error': 'Invalid customer ID'}), 400
 
-    customer = Customer.query.get(customer_id)
+    customer = Customer.query.filter_by(id=customer_id, user_id=request.current_user.id).first()
     if not customer:
         return jsonify({'error': 'Customer not found'}), 404
 
@@ -558,14 +560,16 @@ def list_expenses():
             start = validate_date_string(start_date)
             query = query.filter(Expense.expense_date >= start)
         except ValueError as e:
-            return jsonify({'error': str(e)}), 400
+            logger.warning('Invalid start_date in list_expenses: %s', e)
+            return jsonify({'error': 'Invalid date format'}), 400
 
     if end_date:
         try:
             end = validate_date_string(end_date)
             query = query.filter(Expense.expense_date <= end)
         except ValueError as e:
-            return jsonify({'error': str(e)}), 400
+            logger.warning('Invalid end_date in list_expenses: %s', e)
+            return jsonify({'error': 'Invalid date format'}), 400
 
     expenses = query.order_by(Expense.expense_date.desc()).all()
     return jsonify({'expenses': [e.to_dict() for e in expenses]}), 200
@@ -618,7 +622,8 @@ def create_expense():
         total_amount = Expense.calculate_total(ex_gst_amount, gst_amount)
 
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        logger.warning('Validation error in create_expense: %s', e)
+        return jsonify({'error': 'Invalid input'}), 400
 
     expense = Expense(
         user_id=user.id,
@@ -750,7 +755,8 @@ def update_expense(expense_id):
             expense.requires_review = False
 
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        logger.warning('Validation error in update_expense: %s', e)
+        return jsonify({'error': 'Invalid input'}), 400
 
     log_activity(
         user_id=request.current_user.id,
@@ -853,14 +859,16 @@ def list_invoices():
             start = validate_date_string(start_date)
             query = query.filter(Invoice.invoice_date >= start)
         except ValueError as e:
-            return jsonify({'error': str(e)}), 400
+            logger.warning('Invalid start_date in list_invoices: %s', e)
+            return jsonify({'error': 'Invalid date format'}), 400
 
     if end_date:
         try:
             end = validate_date_string(end_date)
             query = query.filter(Invoice.invoice_date <= end)
         except ValueError as e:
-            return jsonify({'error': str(e)}), 400
+            logger.warning('Invalid end_date in list_invoices: %s', e)
+            return jsonify({'error': 'Invalid date format'}), 400
 
     invoices = query.order_by(Invoice.invoice_date.desc()).all()
     return jsonify({'invoices': [i.to_dict() for i in invoices]}), 200
@@ -885,7 +893,7 @@ def create_invoice():
             return jsonify({'error': 'Customer ID is required'}), 400
         if not validate_uuid(customer_id):
             return jsonify({'error': 'Invalid customer ID'}), 400
-        customer = Customer.query.get(customer_id)
+        customer = Customer.query.filter_by(id=customer_id, user_id=request.current_user.id).first()
         if not customer:
             return jsonify({'error': 'Customer not found'}), 404
 
@@ -912,7 +920,8 @@ def create_invoice():
         total_amount = Invoice.calculate_total(ex_gst_amount, gst_amount)
 
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        logger.warning('Validation error in create_invoice: %s', e)
+        return jsonify({'error': 'Invalid input'}), 400
 
     invoice = Invoice(
         user_id=user.id,
@@ -1009,7 +1018,7 @@ def update_invoice(invoice_id):
                 return jsonify({'error': 'Customer ID cannot be empty'}), 400
             if not validate_uuid(new_customer_id):
                 return jsonify({'error': 'Invalid customer ID'}), 400
-            customer = Customer.query.get(new_customer_id)
+            customer = Customer.query.filter_by(id=new_customer_id, user_id=request.current_user.id).first()
             if not customer:
                 return jsonify({'error': 'Customer not found'}), 404
             invoice.customer_id = new_customer_id
@@ -1041,7 +1050,8 @@ def update_invoice(invoice_id):
                 try:
                     invoice.sent_at = dt_class.fromisoformat(data['sent_at'].replace('Z', '+00:00'))
                 except (ValueError, TypeError) as e:
-                    return jsonify({'error': f'Invalid sent_at timestamp: {str(e)}'}), 400
+                    logger.warning('Invalid sent_at in update_invoice: %s', e)
+                    return jsonify({'error': 'Invalid sent_at timestamp'}), 400
 
         if 'confirmed_received_at' in data:
             if data['confirmed_received_at'] is None or data['confirmed_received_at'] == '':
@@ -1050,7 +1060,8 @@ def update_invoice(invoice_id):
                 try:
                     invoice.confirmed_received_at = dt_class.fromisoformat(data['confirmed_received_at'].replace('Z', '+00:00'))
                 except (ValueError, TypeError) as e:
-                    return jsonify({'error': f'Invalid confirmed_received_at timestamp: {str(e)}'}), 400
+                    logger.warning('Invalid confirmed_received_at in update_invoice: %s', e)
+                    return jsonify({'error': 'Invalid confirmed_received_at timestamp'}), 400
 
         if 'paid_at' in data:
             if data['paid_at'] is None or data['paid_at'] == '':
@@ -1059,13 +1070,15 @@ def update_invoice(invoice_id):
                 try:
                     invoice.paid_at = dt_class.fromisoformat(data['paid_at'].replace('Z', '+00:00'))
                 except (ValueError, TypeError) as e:
-                    return jsonify({'error': f'Invalid paid_at timestamp: {str(e)}'}), 400
+                    logger.warning('Invalid paid_at in update_invoice: %s', e)
+                    return jsonify({'error': 'Invalid paid_at timestamp'}), 400
 
         invoice.gst_amount = Invoice.calculate_gst(invoice.ex_gst_amount, invoice.gst_type)
         invoice.total_amount = Invoice.calculate_total(invoice.ex_gst_amount, invoice.gst_amount)
 
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        logger.warning('Validation error in update_invoice: %s', e)
+        return jsonify({'error': 'Invalid input'}), 400
 
     log_activity(
         user_id=request.current_user.id,
@@ -1132,7 +1145,8 @@ def mark_invoice_paid(invoice_id):
         try:
             invoice.payment_date = validate_date_string(payment_date, required=True)
         except ValueError as e:
-            return jsonify({'error': str(e)}), 400
+            logger.warning('Invalid payment_date in mark_invoice_paid: %s', e)
+            return jsonify({'error': 'Invalid date format'}), 400
     else:
         from datetime import date as date_class
         invoice.payment_date = date_class.today()
@@ -1141,7 +1155,8 @@ def mark_invoice_paid(invoice_id):
         try:
             invoice.amount_paid = validate_decimal(data['amount_paid'], required=True, min_value=0)
         except ValueError as e:
-            return jsonify({'error': str(e)}), 400
+            logger.warning('Invalid amount_paid in mark_invoice_paid: %s', e)
+            return jsonify({'error': 'Invalid amount'}), 400
     else:
         invoice.amount_paid = invoice.total_amount
 
@@ -1186,7 +1201,8 @@ def mark_invoice_sent(invoice_id):
             from datetime import datetime as dt_class
             invoice.sent_at = dt_class.fromisoformat(sent_at_str.replace('Z', '+00:00'))
         except (ValueError, TypeError) as e:
-            return jsonify({'error': f'Invalid sent_at timestamp: {str(e)}'}), 400
+            logger.warning('Invalid sent_at in mark_invoice_sent: %s', e)
+            return jsonify({'error': 'Invalid sent_at timestamp'}), 400
     else:
         invoice.sent_at = get_utc_now()
 
@@ -1231,7 +1247,8 @@ def mark_invoice_confirmed(invoice_id):
             from datetime import datetime as dt_class
             invoice.confirmed_received_at = dt_class.fromisoformat(confirmed_at_str.replace('Z', '+00:00'))
         except (ValueError, TypeError) as e:
-            return jsonify({'error': f'Invalid confirmed_received_at timestamp: {str(e)}'}), 400
+            logger.warning('Invalid confirmed_received_at in mark_invoice_confirmed: %s', e)
+            return jsonify({'error': 'Invalid confirmed_received_at timestamp'}), 400
     else:
         invoice.confirmed_received_at = get_utc_now()
 
