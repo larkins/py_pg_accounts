@@ -235,7 +235,7 @@ def build_aba_file(user, payments, processing_date):
 
     Returns: bytes (ASCII) terminated with CRLF between records.
     """
-    payer_bsb = user.bsb or ''
+    payer_bsb = user.bsb_plain or ''
     lines = [build_header_record(user, processing_date)]
 
     total_cents = 0

@@ -703,7 +703,7 @@ def payroll_exports():
     user = Employee.query.first()  # placeholder — we need the User row
     from app.models.user import User
     user_row = User.query.get(user_id)
-    has_business_bank = bool(user_row.bsb and user_row.account_number)
+    has_business_bank = bool(user_row.bsb_plain and user_row.account_number_plain)
 
     employees_missing_bank = sum(
         1 for ev in events

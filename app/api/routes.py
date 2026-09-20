@@ -1368,9 +1368,9 @@ def update_business_details():
     if 'account_name' in data:
         user.account_name = data['account_name']
     if 'account_number' in data:
-        user.account_number = data['account_number']
+        user.account_number_plain = data['account_number']
     if 'bsb' in data:
-        user.bsb = data['bsb']
+        user.bsb_plain = data['bsb']
     if 'payment_terms' in data:
         try:
             payment_terms = int(data['payment_terms'])
@@ -1407,9 +1407,9 @@ def upload_logo():
         return jsonify({'error': 'No file selected'}), 400
 
     filename = secure_filename(file.filename)
-    allowed_extensions = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'}
+    allowed_extensions = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
     if '.' not in filename or filename.rsplit('.', 1)[1].lower() not in allowed_extensions:
-        return jsonify({'error': 'Invalid file type. Allowed: PNG, JPG, JPEG, GIF, WEBP, SVG'}), 400
+        return jsonify({'error': 'Invalid file type. Allowed: PNG, JPG, JPEG, GIF, WEBP'}), 400
 
     upload_folder = os.path.join(current_app.config.get('UPLOAD_FOLDER', 'uploads'), 'logos')
     os.makedirs(upload_folder, exist_ok=True)

@@ -175,7 +175,7 @@ def generate_invoice_pdf(user, invoice):
             styles['Normal']
         ))
 
-    if user.bank_name or user.account_name or user.account_number or user.bsb:
+    if user.bank_name or user.account_name or user.account_number_plain or user.bsb_plain:
         elements.append(Spacer(1, 0.7*cm))
         elements.append(Paragraph('<b>Bank Details:</b>', styles['Heading3']))
         bank_details = []
@@ -183,10 +183,10 @@ def generate_invoice_pdf(user, invoice):
             bank_details.append(f'Bank: {user.bank_name}')
         if user.account_name:
             bank_details.append(f'Account Name: {user.account_name}')
-        if user.bsb:
-            bank_details.append(f'BSB: {user.bsb}')
-        if user.account_number:
-            bank_details.append(f'Account Number: {user.account_number}')
+        if user.bsb_plain:
+            bank_details.append(f'BSB: {user.bsb_plain}')
+        if user.account_number_plain:
+            bank_details.append(f'Account Number: {user.account_number_plain}')
         elements.append(Paragraph('<br/>'.join(bank_details), styles['Normal']))
 
     doc.build(elements)
@@ -544,7 +544,7 @@ def generate_statement_of_account_pdf(user, customer, invoices, as_of_date):
 
     # ---- bank details + payment terms ------------------------------------
     if outstanding > 0:
-        if user.bank_name or user.account_name or user.account_number or user.bsb:
+        if user.bank_name or user.account_name or user.account_number_plain or user.bsb_plain:
             # Render inline so it flows naturally across page breaks if needed.
             elements.append(Paragraph(
                 '<font size="10" color="#2c3e50"><b>Payment details</b></font>',
@@ -555,10 +555,10 @@ def generate_statement_of_account_pdf(user, customer, invoices, as_of_date):
                 bank_bits.append(f"<b>Bank:</b> {user.bank_name}")
             if user.account_name:
                 bank_bits.append(f"<b>Account name:</b> {user.account_name}")
-            if user.bsb:
-                bank_bits.append(f"<b>BSB:</b> {user.bsb}")
-            if user.account_number:
-                bank_bits.append(f"<b>Account number:</b> {user.account_number}")
+            if user.bsb_plain:
+                bank_bits.append(f"<b>BSB:</b> {user.bsb_plain}")
+            if user.account_number_plain:
+                bank_bits.append(f"<b>Account number:</b> {user.account_number_plain}")
             bank_style = ParagraphStyle(
                 'BankLine', parent=styles['Normal'], fontSize=9, leading=11,
             )

@@ -107,7 +107,13 @@ def create_app(config_path=None):
 
     @app.route('/uploads/<path:filename>')
     def serve_upload(filename):
-        from flask import send_from_directory
+        from flask import send_from_directory, session, abort
+        from app.shared.decorators import _resolve_current_user
+        # Require authentication — receipts and logos contain sensitive data.
+        # Accepts both session cookie (HMI <img> tags) and X-API-Key header.
+        user = _resolve_current_user()
+        if not user:
+            abort(401)
         upload_folder = app.config.get('UPLOAD_FOLDER', 'uploads')
         return send_from_directory(os.path.abspath(upload_folder), filename)
 

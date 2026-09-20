@@ -186,7 +186,7 @@ def export_aba():
     user = request.current_user
 
     # Pre-flight: payer must have bank details configured
-    if not user.bsb or not user.account_number:
+    if not user.bsb_plain or not user.account_number_plain:
         return jsonify({
             'error': 'Business bank details (BSB + account number) are not configured. '
                      'Update via PUT /api/auth/business.',
