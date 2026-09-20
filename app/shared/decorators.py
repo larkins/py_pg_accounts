@@ -2,7 +2,6 @@ from functools import wraps
 from flask import request, session, jsonify
 
 from app.models import db
-from app.models.user import User
 from app.models.activity_log import ActivityLog
 
 
@@ -11,6 +10,10 @@ def _resolve_current_user():
 
     Returns the User row, or None if neither auth method succeeded.
     """
+    # Lazy import to avoid circular dependency:
+    #   user.py → app.shared.pii → app.shared.__init__ → decorators.py → app.models.user
+    from app.models.user import User
+
     # 1. Try X-API-Key header (programmatic API clients)
     api_key = request.headers.get('X-API-Key')
     if api_key:
