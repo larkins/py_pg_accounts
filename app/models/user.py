@@ -41,6 +41,13 @@ class User(UserMixin, db.Model):
     # Columns store ciphertext; use account_number_plain / bsb_plain for decrypted values.
     account_number = db.Column(db.String(500), nullable=True)
     bsb = db.Column(db.String(500), nullable=True)
+    # NAB-issued 6-digit Direct Entry Credit User ID — embedded in ABA file
+    # header positions 57-62. Added 2026-09-21 to replace the hard-coded
+    # '301500' placeholder in app/shared/aba.py:build_header_record (NAB was
+    # rejecting uploads with error 317651). NULL until the user supplies the
+    # real ID from their NAB Connect onboarding email. Stored Fernet-encrypted
+    # (F-05 pattern) — use User.de_user_id_plain to read.
+    de_user_id = db.Column(db.String(500), nullable=True)
     payment_terms = db.Column(db.Integer, nullable=False, default=14)
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=get_utc_now)
     updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=get_utc_now, onupdate=get_utc_now)
@@ -83,6 +90,51 @@ class User(UserMixin, db.Model):
     def bsb_plain(self, value):
         self.bsb = encrypt_pii(value) if value else None
 
+    # --- DE User ID (NAB ABA file header positions 57-62) ---
+    @property
+    def de_user_id_plain(self):
+        """Decrypted Direct Entry Credit User ID. None if not set.
+        Validated to be 6 digits when read; malformed stored values
+        return None rather than raising, since this is on a hot path
+        for aba.py:build_header_record which explicitly handles None.
+        """
+        plain = decrypt_pii(self.de_user_id)
+        if plain and (not plain.isdigit() or len(plain) > 6):
+            return None
+        return plain
+
+    @de_user_id_plain.setter
+    def de_user_id_plain(self, value):
+        """Set the DE User ID. Accepts a 1-6 digit string; pads to 6 on
+        storage. Strips whitespace. Raises ValueError on non-numeric input.
+        """
+        if value is None or value == '':
+            self.de_user_id = None
+            return
+        stripped = str(value).strip()
+        if not stripped.isdigit():
+            raise ValueError(
+                f'DE User ID must be all digits, got {value!r}'
+            )
+        if len(stripped) > 6:
+            raise ValueError(
+                f'DE User ID must be ≤6 digits, got {len(stripped)} in {value!r}'
+            )
+        # Normalise: right-justify zero-filled per ABA spec position 57-62.
+        normalised = stripped.rjust(6, '0')
+        self.de_user_id = encrypt_pii(normalised)
+
+    @property
+    def de_user_id_masked(self):
+        """Masked representation for API responses (e.g. '••3015').
+        Returns None if not set."""
+        plain = self.de_user_id_plain
+        if not plain:
+            return None
+        if len(plain) <= 2:
+            return '•' * len(plain)
+        return '••' + plain[-4:]
+
     def to_dict(self):
         return {
             'id': self.id,
@@ -104,6 +156,7 @@ class User(UserMixin, db.Model):
             'account_name': self.account_name,
             'account_number': mask_account(self.account_number_plain),
             'bsb': mask_bsb(self.bsb_plain),
+            'de_user_id': self.de_user_id_masked,
             'payment_terms': self.payment_terms,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None

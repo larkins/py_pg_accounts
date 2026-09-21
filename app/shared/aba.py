@@ -107,15 +107,34 @@ def build_header_record(user, processing_date):
     """Build the Type 0 (header) record for one ABA file.
 
     Args:
-      user: a User row with bank_name / bsb / account_number / account_name.
-            NAB uses 'NB' as the financial institution abbreviation (per
-            their Direct Link docs); we hard-code that since it's a fixed
-            value, not a per-user choice.
+      user: a User row with bank_name / bsb / account_number / account_name
+            AND de_user_id_plain (NAB-issued 6-digit Direct Entry Credit
+            User ID). NAB uses 'NB' as the financial institution abbreviation
+            (per their Direct Link docs); we hard-code that since it's a
+            fixed value, not a per-user choice.
       processing_date: the date the bank should release the payments.
 
     Returns: a 120-character ASCII string.
+
+    Raises:
+      ValueError: if the user has no DE User ID set (positions 57-62 of the
+        Cemtex spec MUST be a 6-digit APCA-issued User ID — NAB rejects
+        uploads with error 317651 ("From account details must be entered")
+        when this is wrong). Earlier versions of this code shipped with a
+        placeholder '301500' which NAB also rejected; we now fail at file
+        generation time instead of producing a broken file.
     """
     fi_abbr = 'NAB'  # NAB. Per APCA Financial Institution abbreviation list (3 chars per spec).
+
+    de_user_id = getattr(user, 'de_user_id_plain', None)
+    if not de_user_id:
+        raise ValueError(
+            f"User {getattr(user, 'email', '<unknown>')!r} has no DE User ID set. "
+            f"Add the 6-digit Direct Entry Credit User ID (from your NAB Connect "
+            f"onboarding email, sent by NABConnect.Onboarding@nab.com.au) to the "
+            f"users.de_user_id column. NAB will reject any ABA file whose header "
+            f"record has blank positions 57-62 with error 317651."
+        )
 
     record = (
         '0'                        # 1: Record Type
@@ -124,7 +143,7 @@ def build_header_record(user, processing_date):
         + fi_abbr                  # 21-23: FI abbreviation (NAB)
         + _pad('', 7)              # 24-30: Blank
         + _clean_text(user.account_name or user.business_name or '', 26)  # 31-56: User name
-        + _pad('301500', 6, right_justify=True, fill='0')  # 57-62: User ID Number (NAB issued, placeholder)
+        + _pad(de_user_id, 6, right_justify=True, fill='0')  # 57-62: User ID Number (NAB issued, 6 digits)
         + _clean_text('PAYROLL', 12)                        # 63-74: Description of entries
         + _format_ddmmyy(processing_date)                    # 75-80: Date to be processed
         + _pad('', 40)                                       # 81-120: Blank

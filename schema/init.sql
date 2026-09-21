@@ -654,3 +654,14 @@ COMMENT ON COLUMN payee_directory.account_number IS 'Fernet ciphertext. Decrypt 
 CREATE TRIGGER update_payee_directory_updated_at
     BEFORE UPDATE ON payee_directory
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- ===================== users.de_user_id =====================
+-- Added 2026-09-21 — NAB-issued 6-digit Direct Entry Credit User ID,
+-- embedded in ABA file header positions 57-62. Stored Fernet-encrypted
+-- (F-05 pattern; mirrors users.bsb / users.account_number).
+-- Use User.de_user_id_plain to read.
+-- See schema/migrate_user_de_user_id.sql for the existing-DB migration.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS de_user_id VARCHAR(500);
+
+COMMENT ON COLUMN users.de_user_id IS
+    'Fernet ciphertext. NAB-issued 6-digit Direct Entry Credit User ID, embedded in ABA file header positions 57-62. Decrypt via User.de_user_id_plain. NULL until user supplies the real ID from their NAB Connect onboarding email.';
