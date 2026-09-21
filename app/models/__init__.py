@@ -54,6 +54,12 @@ from .pending_payment_reconciliation import (
     PENDING_RECONCILIATION_STATUSES,
 )
 
+# Org-scoped bank destinations for outbound payments — added 2026-09-21
+# to give the Wrkr Pay super clearing house a home in the schema (used by
+# scripts/gen_super_aba.py to build NAB-compatible ABA files for super).
+# F-05 encryption mirrors the Employee model.
+from .payee_directory import Payee, PAYEE_USE_CASES
+
 
 __all__ = [
     'db', 'get_utc_now',
@@ -71,4 +77,6 @@ __all__ = [
     'INVOICE_REMINDER_SENDERS',
     'PendingPaymentReconciliation',
     'PENDING_RECONCILIATION_STATUSES',
+    'Payee',
+    'PAYEE_USE_CASES',
 ]

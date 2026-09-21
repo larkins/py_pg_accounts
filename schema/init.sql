@@ -611,3 +611,46 @@ COMMENT ON TABLE system_settings IS 'Key/value store for runtime-tunable app-wid
 CREATE TRIGGER update_system_settings_updated_at
     BEFORE UPDATE ON system_settings
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- ===================== payee_directory =====================
+-- Added 2026-09-21 — org-scoped bank destinations for outbound payments
+-- (super clearing houses, ATO, suppliers, etc.). Bank details are
+-- Fernet-encrypted at rest (F-05 pattern; mirrored from employees.bank_*).
+-- See app/models/payee_directory.py and schema/migrate_payee_directory.sql.
+CREATE TABLE IF NOT EXISTS payee_directory (
+    id              VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v4()::text,
+    user_id         VARCHAR(36) NOT NULL REFERENCES users(id),
+
+    -- Human-facing
+    label           VARCHAR(64) NOT NULL,
+    use_case        VARCHAR(32),                      -- 'super_clearing_house' | 'ato' | 'wages' | 'supplier' | 'other'
+    account_name    VARCHAR(255) NOT NULL,
+
+    -- F-05 encrypted ciphertext columns (use Payee.bsb_plain /
+    -- Payee.account_number_plain accessors to read; *_masked via to_dict()).
+    bsb             VARCHAR(500),
+    account_number  VARCHAR(500),
+
+    -- Lifecycle
+    is_active       BOOLEAN     NOT NULL DEFAULT TRUE,
+    notes           TEXT,
+
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_payee_directory_user
+    ON payee_directory(user_id);
+
+CREATE INDEX IF NOT EXISTS idx_payee_directory_user_use_case
+    ON payee_directory(user_id, use_case)
+    WHERE is_active = TRUE;
+
+COMMENT ON TABLE payee_directory IS
+    'Org-scoped bank destinations for outbound payments (super clearing houses, ATO, suppliers, etc.). bsb/account_number stored Fernet-encrypted (F-05).';
+COMMENT ON COLUMN payee_directory.bsb IS 'Fernet ciphertext. Decrypt via Payee.bsb_plain.';
+COMMENT ON COLUMN payee_directory.account_number IS 'Fernet ciphertext. Decrypt via Payee.account_number_plain.';
+
+CREATE TRIGGER update_payee_directory_updated_at
+    BEFORE UPDATE ON payee_directory
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
