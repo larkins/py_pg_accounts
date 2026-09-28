@@ -231,6 +231,54 @@ def list_customers():
     return jsonify({'customers': [c.to_dict() for c in customers]}), 200
 
 
+def _validate_cc_emails(data, field='invoice_cc_emails'):
+    """Validate the per-customer invoice Cc mailing list.
+
+    Returns (error_message_or_none, normalised_value_or_None).
+
+    Rules:
+      - Must be a JSON array of strings.
+      - Empty list `[]` is allowed (means "no Cc").
+      - Each entry must look like an email address (basic regex; we don't
+        want to be RFC-perfect, just reject obvious typos so customers
+        don't silently bounce).
+      - Server lowercases + strips whitespace + dedupes (preserves first
+        occurrence order).
+      - Max 50 entries (sanity cap; no real customer has anywhere near
+        that many invoice readers).
+
+    Added 2026-09-28 alongside the customers.invoice_cc_emails JSONB column.
+    """
+    import re
+    if field not in data:
+        return None, None
+    value = data[field]
+    if value is None:
+        return None, []  # null means "clear the list"
+    if not isinstance(value, list):
+        return f"`{field}` must be a JSON array of email strings.", None
+    if len(value) > 50:
+        return f"`{field}` accepts at most 50 entries (got {len(value)}).", None
+    email_re = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
+    seen = set()
+    normalised = []
+    for i, entry in enumerate(value):
+        if not isinstance(entry, str):
+            return f"`{field}[{i}]` must be a string, got {type(entry).__name__}.", None
+        cleaned = entry.strip().lower()
+        if not cleaned:
+            continue  # skip empty entries silently
+        if len(cleaned) > 255:
+            return f"`{field}[{i}]` is longer than 255 characters.", None
+        if not email_re.match(cleaned):
+            return f"`{field}[{i}]` ('{entry}') does not look like a valid email address.", None
+        if cleaned in seen:
+            continue
+        seen.add(cleaned)
+        normalised.append(cleaned)
+    return None, normalised
+
+
 @api_bp.route('/customers/<customer_id>', methods=['GET'])
 @api_key_required
 def get_customer(customer_id):
@@ -419,6 +467,10 @@ def create_customer():
     if addr_error:
         return jsonify({'error': addr_error}), 400
 
+    cc_error, normalised_cc = _validate_cc_emails(data)
+    if cc_error:
+        return jsonify({'error': cc_error}), 400
+
     customer = Customer(
         user_id=request.current_user.id,
         name=name,
@@ -433,6 +485,7 @@ def create_customer():
         abn=data.get('abn'),
         contact_number=data.get('contact_number'),
         gst=data.get('gst', True),
+        invoice_cc_emails=normalised_cc or [],
     )
 
     db.session.add(customer)
@@ -500,6 +553,12 @@ def update_customer(customer_id):
         customer.contact_number = data['contact_number']
     if 'gst' in data:
         customer.gst = data['gst']
+
+    if 'invoice_cc_emails' in data:
+        cc_error, normalised_cc = _validate_cc_emails(data)
+        if cc_error:
+            return jsonify({'error': cc_error}), 400
+        customer.invoice_cc_emails = normalised_cc or []
 
     log_activity(
         user_id=request.current_user.id,

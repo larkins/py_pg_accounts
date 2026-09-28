@@ -4,9 +4,9 @@
 -- This file is the authoritative schema. New tables are normally created
 -- automatically by db.create_all() on app startup (see app/models/*), but
 -- every committed model MUST also be reflected here so fresh installs from
--- scratch have the full schema. Last synced with live DB on 2026-09-07
--- (added bas_lodgements from 01cc090 + bank_transactions from 74eef7b +
--- invoice_reminders + pending_payment_reconciliations from 08 Sep 2026).
+-- scratch have the full schema. Last synced with live DB on 2026-09-28
+-- (added customers.invoice_cc_emails JSONB column for the per-customer Cc
+-- mailing list — see migrate_customer_invoice_cc_emails.sql).
 
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
@@ -106,6 +106,7 @@ CREATE TABLE IF NOT EXISTS customers (
     abn VARCHAR(20),
     contact_number VARCHAR(50),
     gst BOOLEAN NOT NULL DEFAULT TRUE,
+    invoice_cc_emails JSONB,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -118,6 +119,12 @@ ALTER TABLE customers ADD COLUMN IF NOT EXISTS city VARCHAR(100);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS state VARCHAR(50);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS postcode VARCHAR(20);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS country VARCHAR(100) NOT NULL DEFAULT 'Australia';
+-- Per-customer invoice Cc mailing list (added 2026-09-28). Replaces
+-- hardcoded CC_LIST constants in send_*_invoice.py scripts. See
+-- migrate_customer_invoice_cc_emails.sql for rationale.
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS invoice_cc_emails JSONB;
+CREATE INDEX IF NOT EXISTS idx_customers_invoice_cc_emails
+    ON customers USING GIN (invoice_cc_emails);
 -- Employees DOB column (added 2026-09-17 alongside SAFF work).
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS date_of_birth VARCHAR(500);
 -- Address + sex + phone (added 2026-09-17 for SAFF exports).
@@ -661,7 +668,11 @@ CREATE TRIGGER update_payee_directory_updated_at
 -- (F-05 pattern; mirrors users.bsb / users.account_number).
 -- Use User.de_user_id_plain to read.
 -- See schema/migrate_user_de_user_id.sql for the existing-DB migration.
+--
+-- NOTE: NAB staff (bankers, Connect/Direct Link support) commonly refer
+-- to this same value as the "OSID" (Originator Short IDentifier). If you
+-- ever call NAB support and they ask for the "OSID", this column is it.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS de_user_id VARCHAR(500);
 
 COMMENT ON COLUMN users.de_user_id IS
-    'Fernet ciphertext. NAB-issued 6-digit Direct Entry Credit User ID, embedded in ABA file header positions 57-62. Decrypt via User.de_user_id_plain. NULL until user supplies the real ID from their NAB Connect onboarding email.';
+    'Fernet ciphertext. NAB-issued 6-digit Direct Entry Credit User ID (also known as OSID/Originator Short IDentifier in NAB terminology), embedded in ABA file header positions 57-62. Decrypt via User.de_user_id_plain. NULL until user supplies the real ID from their NAB Connect onboarding email.';
