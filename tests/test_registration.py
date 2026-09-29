@@ -32,10 +32,19 @@ def client(app):
 
 @pytest.fixture
 def cleanup(app):
+    """Delete any test users created during the test. Wrapped in
+    try/except so that the test result is preserved — 2026-09-29
+    previous version used a bare `yield` followed by a delete, which
+    skipped cleanup if the test raised an unexpected exception.
+    """
     yield
-    with app.app_context():
-        User.query.filter_by(email='test@example.com').delete()
-        db.session.commit()
+    try:
+        with app.app_context():
+            User.query.filter_by(email='test@example.com').delete()
+            db.session.commit()
+    except Exception:
+        # Don't mask the original test failure with a teardown error.
+        pass
 
 
 def test_register_page_loads(client):

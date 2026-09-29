@@ -66,8 +66,19 @@ class SystemSetting(db.Model):
 # ---------------------------------------------------------------------------
 
 DEFAULT_SETTINGS = {
-    # Business identity (appears on payslips, invoices, SAFF files).
-    'BUSINESS_NAME': 'Peristyle',
+    # Business identity (appears on payslips, invoices, SAFF files, and the
+    # top-right header block of every PDF the system generates). 2026-09-29
+    # address fields were promoted to runtime-tunable settings to replace
+    # the placeholder values that previously shipped in the user row.
+    # The user row is still the primary source per-tenant; these defaults
+    # are the fallback when the user row has an empty address component.
+    'BUSINESS_NAME':           'Peristyle',
+    'BUSINESS_ADDRESS_LINE1':  '5 Fisher St',
+    'BUSINESS_ADDRESS_LINE2':  '',
+    'BUSINESS_CITY':           'Collingwood Park',
+    'BUSINESS_STATE':          'QLD',
+    'BUSINESS_POSTCODE':       '4301',
+    'BUSINESS_COUNTRY':        'Australia',
 
     # Default super fund (used as a fallback when an employee record
     # doesn't specify their own fund name). The fund ABN/USI are PUBLIC

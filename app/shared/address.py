@@ -109,6 +109,13 @@ def render_address(obj):
 
     Returns '' if every component is empty. Suitable for PDF rendering,
     plain-text emails, and any consumer that just wants a printable string.
+
+    Fallback (added 2026-09-29): if a structured field on the object is
+    empty, fall back to the BUSINESS_ADDRESS_* system_settings entries.
+    The user row remains the per-tenant override (so different tenants
+    can have different business addresses), but the system_settings
+    defaults are what fresh installs and reset users see — they no
+    longer ship with the "1 Example St" placeholder.
     """
     if obj is None:
         return ''
@@ -116,17 +123,38 @@ def render_address(obj):
     # `country` is the 2-letter locale code (e.g. 'AU'), not the
     # address's country name ('Australia'). On Customer there's no
     # `address_country` so this falls through to `country` correctly.
+    # Lazy import: avoids a circular dep with app.models at module load.
+    from flask import has_app_context
+    from app.models.system_setting import get_setting
+
+    def _or_setting(field_value, setting_key):
+        v = (field_value or '').strip() if field_value else ''
+        if v:
+            return v
+        # Only consult the system_settings table when we're inside an
+        # application context (i.e. a real Flask request or app boot).
+        # Outside that context (tests, scripts, REPL) we skip the lookup
+        # and return empty so callers see no address instead of a
+        # RuntimeError. This preserves the historical behaviour for
+        # tests that build plain Python objects without an app context.
+        if not has_app_context():
+            return ''
+        try:
+            return get_setting(setting_key, '') or ''
+        except Exception:
+            return ''
+
     country = (
-        getattr(obj, 'address_country', None)
-        or getattr(obj, 'country', None)
+        _or_setting(getattr(obj, 'address_country', None), 'BUSINESS_COUNTRY')
+        or _or_setting(getattr(obj, 'country', None),          'BUSINESS_COUNTRY')
         or 'Australia'
     )
     return reassemble_address(
-        getattr(obj, 'address_line1', None),
-        getattr(obj, 'address_line2', None),
-        getattr(obj, 'city', None),
-        getattr(obj, 'state', None),
-        getattr(obj, 'postcode', None),
+        _or_setting(getattr(obj, 'address_line1', None), 'BUSINESS_ADDRESS_LINE1'),
+        _or_setting(getattr(obj, 'address_line2', None), 'BUSINESS_ADDRESS_LINE2'),
+        _or_setting(getattr(obj, 'city', None),          'BUSINESS_CITY'),
+        _or_setting(getattr(obj, 'state', None),         'BUSINESS_STATE'),
+        _or_setting(getattr(obj, 'postcode', None),      'BUSINESS_POSTCODE'),
         country,
     )
 

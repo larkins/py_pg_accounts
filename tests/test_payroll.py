@@ -66,9 +66,18 @@ def client(app):
 # ---------------------------------------------------------------------------
 
 class TestPIIRoundTrip:
-    """Encrypt → DB → decrypt preserves the plaintext."""
+    """Encrypt → DB → decrypt preserves the plaintext.
 
-    def test_tfn_round_trip(self, app):
+    These tests create real Employee rows tied to the live business
+    user (via `_pick_user_id`). If an assertion fails before the
+    `db.session.delete()` line runs, the test Employee would be left
+    orphaned in production — tagged only by the `TEST_<TYPE>_<uuid>`
+    legal_name. 2026-09-29 fix: each test uses a try/finally so the
+    delete runs even on assertion failure, AND the `restore_user`
+    fixture is applied as a safety net.
+    """
+
+    def test_tfn_round_trip(self, app, restore_user):
         with app.app_context():
             e = Employee(
                 user_id=self._pick_user_id(app),
@@ -78,15 +87,21 @@ class TestPIIRoundTrip:
             db.session.add(e)
             db.session.commit()
             eid = e.id
-            db.session.expire_all()
-            fresh = Employee.query.get(eid)
-            assert fresh.tfn_plain == '107 075 250'
-            assert fresh.tfn_masked == '*** *** 250'
-            # Cleanup
-            db.session.delete(fresh)
-            db.session.commit()
+            try:
+                db.session.expire_all()
+                fresh = Employee.query.get(eid)
+                assert fresh.tfn_plain == '107 075 250'
+                assert fresh.tfn_masked == '*** *** 250'
+            finally:
+                # Cleanup runs even on assertion failure so we don't
+                # leave orphans in production tied to the live user.
+                try:
+                    db.session.delete(Employee.query.get(eid))
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
 
-    def test_bsb_round_trip(self, app):
+    def test_bsb_round_trip(self, app, restore_user):
         with app.app_context():
             e = Employee(
                 user_id=self._pick_user_id(app),
@@ -96,14 +111,19 @@ class TestPIIRoundTrip:
             db.session.add(e)
             db.session.commit()
             eid = e.id
-            db.session.expire_all()
-            fresh = Employee.query.get(eid)
-            assert fresh.bank_bsb_plain == '123-456'
-            assert fresh.bank_bsb_masked == '***-456'
-            db.session.delete(fresh)
-            db.session.commit()
+            try:
+                db.session.expire_all()
+                fresh = Employee.query.get(eid)
+                assert fresh.bank_bsb_plain == '123-456'
+                assert fresh.bank_bsb_masked == '***-456'
+            finally:
+                try:
+                    db.session.delete(Employee.query.get(eid))
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
 
-    def test_account_round_trip(self, app):
+    def test_account_round_trip(self, app, restore_user):
         with app.app_context():
             e = Employee(
                 user_id=self._pick_user_id(app),
@@ -113,14 +133,19 @@ class TestPIIRoundTrip:
             db.session.add(e)
             db.session.commit()
             eid = e.id
-            db.session.expire_all()
-            fresh = Employee.query.get(eid)
-            assert fresh.bank_account_number_plain == '12345678'
-            assert fresh.bank_account_number_masked == '*****5678'
-            db.session.delete(fresh)
-            db.session.commit()
+            try:
+                db.session.expire_all()
+                fresh = Employee.query.get(eid)
+                assert fresh.bank_account_number_plain == '12345678'
+                assert fresh.bank_account_number_masked == '*****5678'
+            finally:
+                try:
+                    db.session.delete(Employee.query.get(eid))
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
 
-    def test_to_dict_masks_pii_by_default(self, app):
+    def test_to_dict_masks_pii_by_default(self, app, restore_user):
         with app.app_context():
             e = Employee(
                 user_id=self._pick_user_id(app),
@@ -132,19 +157,24 @@ class TestPIIRoundTrip:
             db.session.add(e)
             db.session.commit()
             eid = e.id
-            db.session.expire_all()
-            fresh = Employee.query.get(eid)
-            d = fresh.to_dict()
-            assert d['tfn'] == '*** *** 333'
-            assert d['bank_bsb'] == '***-888'
-            assert d['bank_account_number'] == '*****7777'
-            # Reveal path returns plaintext
-            d2 = fresh.to_dict(include_pii_plain=True)
-            assert d2['tfn_plain'] == '111 222 333'
-            assert d2['bank_bsb_plain'] == '999-888'
-            assert d2['bank_account_number_plain'] == '77777777'
-            db.session.delete(fresh)
-            db.session.commit()
+            try:
+                db.session.expire_all()
+                fresh = Employee.query.get(eid)
+                d = fresh.to_dict()
+                assert d['tfn'] == '*** *** 333'
+                assert d['bank_bsb'] == '***-888'
+                assert d['bank_account_number'] == '*****7777'
+                # Reveal path returns plaintext
+                d2 = fresh.to_dict(include_pii_plain=True)
+                assert d2['tfn_plain'] == '111 222 333'
+                assert d2['bank_bsb_plain'] == '999-888'
+                assert d2['bank_account_number_plain'] == '77777777'
+            finally:
+                try:
+                    db.session.delete(Employee.query.get(eid))
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
 
     def _pick_user_id(self, app):
         u = User.query.first()

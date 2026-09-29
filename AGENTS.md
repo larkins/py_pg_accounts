@@ -395,6 +395,13 @@ py_pg_accounts/
 
 5. **GST Types**: 0 (no GST) or 0.1 (10%)
 
+6. **Tests run against the live production database** (2026-09-29). There is no separate test DB. Any test that mutates a real row can silently corrupt production state. Use the snapshot/restore fixtures in `tests/conftest.py`:
+
+   - `restore_user` — snapshots `evie@peristyle.ai` on entry, restores on exit (even on assertion failure). Use in any test that mutates the business's own address, bank details, contact info, etc.
+   - `snapshot_row(model, pk)` — registers a snapshot for any other row. Use for customers, employees, system settings, etc.
+
+   **Never** hardcode placeholder values in test cleanup (e.g. `u.address_line1 = '1 Example St'`). That pattern silently overwrites production state every time the test suite runs. See `tests/test_address_refactor.py::test_business_address_update_normalises_state` for an example of the wrong pattern (deleted 2026-09-29) and the right pattern (uses `restore_user`).
+
 ## Troubleshooting
 
 ### OCR jobs not processing

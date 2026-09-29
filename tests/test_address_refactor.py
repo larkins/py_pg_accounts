@@ -219,9 +219,15 @@ class TestCustomerUpdateStructured:
 
 class TestBusinessUpdateStructured:
     """The business owner's address (User.address_*) has its own route
-    (`/api/auth/business` PUT). It uses the same validators."""
+    (`/api/auth/business` PUT). It uses the same validators.
 
-    def test_business_address_update_normalises_state(self, client, auth_headers):
+    The `restore_user` fixture (tests/conftest.py) snapshots the
+    `evie@peristyle.ai` user row on entry and restores it on exit, so
+    any mutations made via the API during the test cannot leak into
+    production.
+    """
+
+    def test_business_address_update_normalises_state(self, client, auth_headers, restore_user):
         r = client.put(
             '/api/auth/business',
             json={
@@ -240,11 +246,106 @@ class TestBusinessUpdateStructured:
         # Legacy `address` field is gone from the response
         assert 'address' not in body
 
-        # Cleanup so the test is repeatable
-        with client.application.app_context():
-            u = User.query.filter_by(email='evie@peristyle.ai').first()
-            u.address_line1 = '1 Example St'
-            u.city = 'Brisbane'
-            u.state = 'QLD'
-            u.postcode = '4000'
-            db.session.commit()
+
+class TestRenderAddressSystemSettingsFallback:
+    """render_address() should fall back to the BUSINESS_ADDRESS_*
+    system_settings entries when the structured fields on the object
+    are empty. Added 2026-09-29 after the top-right header on the
+    Statement of Account PDF was found to render a placeholder
+    ('1 Example St') because the user row had placeholder values
+    instead of the real business address.
+
+    The user row remains the per-tenant override; the system_settings
+    defaults are the safety net so a fresh install or wiped user row
+    never falls back to a placeholder string.
+    """
+
+    def test_full_user_overrides_settings(self, app):
+        from types import SimpleNamespace
+        from app.shared.address import render_address
+        from app.models.system_setting import seed_defaults
+
+        with app.app_context():
+            seed_defaults()
+            u = SimpleNamespace(
+                address_line1='Tenant Specific',
+                address_line2=None,
+                city='West End',
+                state='QLD',
+                postcode='4101',
+                address_country='Australia',
+                country='AU',
+            )
+            rendered = render_address(u)
+            assert 'Tenant Specific' in rendered
+            assert 'West End QLD 4101' in rendered
+            # Settings must NOT bleed through when the user has them.
+            assert 'Fisher St' not in rendered
+
+    def test_empty_user_falls_back_to_settings(self, app):
+        from types import SimpleNamespace
+        from app.shared.address import render_address
+        from app.models.system_setting import seed_defaults
+
+        with app.app_context():
+            seed_defaults()
+            u = SimpleNamespace(
+                address_line1=None,
+                address_line2=None,
+                city=None,
+                state=None,
+                postcode=None,
+                address_country=None,
+                country=None,
+            )
+            rendered = render_address(u)
+            # The system_settings defaults take over.
+            assert 'Fisher St' in rendered, rendered
+            assert 'Collingwood Park QLD 4301' in rendered, rendered
+
+    def test_partial_user_fills_gaps_from_settings(self, app):
+        from types import SimpleNamespace
+        from app.shared.address import render_address
+        from app.models.system_setting import seed_defaults
+
+        with app.app_context():
+            seed_defaults()
+            u = SimpleNamespace(
+                address_line1='Custom Suite',
+                address_line2=None,
+                city=None,         # missing — should pull from settings
+                state='NSW',       # tenant-specific state
+                postcode=None,     # missing — should pull from settings
+                address_country='Australia',
+                country='AU',
+            )
+            rendered = render_address(u)
+            assert 'Custom Suite' in rendered
+            # Missing fields pulled from system_settings
+            assert 'Collingwood Park' in rendered
+            assert '4301' in rendered
+            # Tenant-specific state still wins over the settings default
+            assert 'NSW' in rendered
+
+    def test_render_outside_app_context_does_not_raise(self):
+        """Tests, scripts, and REPL sessions call render_address without
+        a Flask app context. The fallback path must skip the system_settings
+        DB lookup gracefully and return what the object has, instead of
+        raising RuntimeError.
+        """
+        from types import SimpleNamespace
+        from app.shared.address import render_address
+
+        u = SimpleNamespace(
+            address_line1='No Context',
+            address_line2=None,
+            city='Sumner',
+            state='QLD',
+            postcode='4074',
+            address_country='Australia',
+            country='AU',
+        )
+        # Should not raise even though no app context is active.
+        rendered = render_address(u)
+        assert 'No Context' in rendered
+        assert 'Sumner QLD 4074' in rendered
