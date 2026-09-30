@@ -116,6 +116,15 @@ def render_address(obj):
     can have different business addresses), but the system_settings
     defaults are what fresh installs and reset users see — they no
     longer ship with the "1 Example St" placeholder.
+
+    **Customer-vs-user scoping (2026-10-01):** the BUSINESS_ADDRESS_*
+    fallback only applies when the object is a User (the tenant's own
+    business). For Customer objects, an empty field stays empty — we
+    must NOT silently stamp the business's own address on a customer's
+    "Bill To" block, which is misleading and was a bug when customers
+    without addresses were billed. Detected by checking for the User-only
+    `address_country` attribute; Customer objects fall through and return
+    whatever they actually have (possibly empty).
     """
     if obj is None:
         return ''
@@ -127,10 +136,20 @@ def render_address(obj):
     from flask import has_app_context
     from app.models.system_setting import get_setting
 
+    # Decide whether the BUSINESS_ADDRESS_* fallback applies. Only the
+    # tenant's User row should fall back to business settings — a Customer
+    # with no address should render as empty, not silently borrow the
+    # tenant's business address.
+    is_user = hasattr(obj, 'address_country')
+
     def _or_setting(field_value, setting_key):
         v = (field_value or '').strip() if field_value else ''
         if v:
             return v
+        if not is_user:
+            # Customer (or any non-user object): never substitute the
+            # business address. Return empty.
+            return ''
         # Only consult the system_settings table when we're inside an
         # application context (i.e. a real Flask request or app boot).
         # Outside that context (tests, scripts, REPL) we skip the lookup

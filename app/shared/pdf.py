@@ -132,9 +132,13 @@ def generate_invoice_pdf(user, invoice):
         elements.append(Paragraph(invoice.description, styles['Normal']))
         elements.append(Spacer(1, 0.5*cm))
 
+    # Wrap the description cell in a Paragraph so multi-line descriptions
+    # (encoded with <br/> by the caller) render correctly. Strings would
+    # show the literal `<br/>` text.
     items_data = [
         ['Description', 'Amount'],
-        [invoice.description or 'Services', f"${invoice.ex_gst_amount:.2f}"]
+        [Paragraph(invoice.description or 'Services', styles['Normal']),
+         f"${invoice.ex_gst_amount:.2f}"]
     ]
     items_table = Table(items_data, colWidths=[12*cm, 4*cm])
     items_table.setStyle(TableStyle([
