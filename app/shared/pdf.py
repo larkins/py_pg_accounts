@@ -6,6 +6,7 @@ Provides reusable PDF generation for invoices.
 
 import io
 import os
+import re
 
 from app.shared.address import render_address
 from reportlab.lib.pagesizes import A4
@@ -13,6 +14,49 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
+
+
+# Matches a trailing " — $X.XX" (em-dash + dollar amount) at the end of a
+# description line. Used by _parse_line_items to split a multi-line description
+# into separate line items.
+_LINE_ITEM_AMOUNT_RE = re.compile(r"\s*—\s*\$([\d,]+\.\d{2})\s*$")
+
+
+def _parse_line_items(description):
+    """Parse a multi-line description into a list of (text, amount) tuples.
+
+    Encoded form (chosen 2026-10-01 for the Michael Copland invoice): callers
+    put one line item per line, separated by `<br/>`, with the amount at the
+    end of each line as " — $X.XX" (em-dash + dollar amount). Example:
+
+        A.I Inference and System Hosting — $100.00<br/>
+        A.I Agent and Software System Development — $200.00
+
+    Returns the parsed list if every line has a parseable amount; otherwise
+    returns None (caller falls back to single-row behaviour). Single-line
+    descriptions without `<br/>` always fall back — that preserves the
+    pre-2026-10-01 behaviour for invoices like Polymedtech's "Hosting +
+    inference - <Month Year>".
+    """
+    if not description or '<br' not in description.lower():
+        return None
+    raw_lines = re.split(r'<br\s*/?>', description, flags=re.IGNORECASE)
+    items = []
+    for raw in raw_lines:
+        line = raw.strip()
+        if not line:
+            continue
+        m = _LINE_ITEM_AMOUNT_RE.search(line)
+        if not m:
+            return None  # One of the lines lacks an amount — not line items.
+        amount_str = m.group(1).replace(',', '')
+        try:
+            amount = float(amount_str)
+        except ValueError:
+            return None
+        text = _LINE_ITEM_AMOUNT_RE.sub('', line).strip()
+        items.append((text, amount))
+    return items or None
 
 
 def generate_invoice_pdf(user, invoice):
@@ -127,19 +171,58 @@ def generate_invoice_pdf(user, invoice):
     elements.append(Paragraph(customer_info, styles['Normal']))
     elements.append(Spacer(1, 0.5*cm))
 
-    if invoice.description:
-        elements.append(Paragraph('<b>Description:</b>', styles['Heading3']))
-        elements.append(Paragraph(invoice.description, styles['Normal']))
-        elements.append(Spacer(1, 0.5*cm))
+    # NOTE: the description is rendered inside the items table below — there is
+    # no separate "Description:" paragraph above it. Pre-2026-10-01 this block
+    # emitted a redundant Description paragraph AND a single-row items table
+    # that both contained the description; Michael flagged it as visually
+    # duplicated on 2026-10-01. The items table now owns all line-item
+    # rendering.
 
-    # Wrap the description cell in a Paragraph so multi-line descriptions
-    # (encoded with <br/> by the caller) render correctly. Strings would
-    # show the literal `<br/>` text.
-    items_data = [
-        ['Description', 'Amount'],
-        [Paragraph(invoice.description or 'Services', styles['Normal']),
-         f"${invoice.ex_gst_amount:.2f}"]
-    ]
+    # Build the items table. New behaviour (2026-10-01): if the description is
+    # encoded as multi-line `<br/>`-separated lines each carrying a trailing
+    # dollar amount, render one row per line item with its individual amount.
+    # Otherwise fall back to the pre-2026-10-01 single-row behaviour (one
+    # description cell + the ex_gst total), which keeps Polymedtech and any
+    # other legacy single-line invoices rendering unchanged.
+    line_items = _parse_line_items(invoice.description)
+    if line_items:
+        items_data = [['Description', 'Amount']]
+        for text, amount in line_items:
+            items_data.append([
+                Paragraph(text, styles['Normal']),
+                f"${amount:,.2f}",
+            ])
+    else:
+        # Wrap the description cell in a Paragraph so multi-line descriptions
+        # (encoded with <br/> by the caller) render correctly. Strings would
+        # show the literal `<br/>` text.
+        items_data = [
+            ['Description', 'Amount'],
+            [Paragraph(invoice.description or 'Services', styles['Normal']),
+             f"${invoice.ex_gst_amount:,.2f}"]
+        ]
+    # encoded as multi-line `<br/>`-separated lines each carrying a trailing
+    # dollar amount, render one row per line item with its individual amount.
+    # Otherwise fall back to the pre-2026-10-01 single-row behaviour (one
+    # description cell + the ex_gst total), which keeps Polymedtech and any
+    # other legacy single-line invoices rendering unchanged.
+    line_items = _parse_line_items(invoice.description)
+    if line_items:
+        items_data = [['Description', 'Amount']]
+        for text, amount in line_items:
+            items_data.append([
+                Paragraph(text, styles['Normal']),
+                f"${amount:,.2f}",
+            ])
+    else:
+        # Wrap the description cell in a Paragraph so multi-line descriptions
+        # (encoded with <br/> by the caller) render correctly. Strings would
+        # show the literal `<br/>` text.
+        items_data = [
+            ['Description', 'Amount'],
+            [Paragraph(invoice.description or 'Services', styles['Normal']),
+             f"${invoice.ex_gst_amount:,.2f}"]
+        ]
     items_table = Table(items_data, colWidths=[12*cm, 4*cm])
     items_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#34495e')),
