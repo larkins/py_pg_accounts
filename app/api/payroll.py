@@ -1097,6 +1097,30 @@ def mark_super_payment_paid(sp_id):
         return _err('Super payment not found', 404)
     if sp.status != 'pending':
         return _err(f'Cannot mark paid from status={sp.status}', 409)
+
+    data = request.get_json(silent=True) or {}
+
+    # Optional bank-side reference (e.g. NAB confirmation number).
+    # If caller didn't provide one, leave the existing value alone.
+    if data.get('payment_reference') is not None:
+        ref = str(data['payment_reference']).strip()
+        if len(ref) > 100:
+            return _err('payment_reference too long (max 100 chars)', 400)
+        sp.payment_reference = ref or None
+
+    # Optional free-text notes (e.g. "manual NAB IB upload due to wizard gap").
+    if data.get('notes') is not None:
+        sp.notes = data['notes'] or None
+
+    # Optional bank-side remittance date — if caller paid on a different day
+    # than the planned remittance_date, let them correct it.
+    if data.get('remittance_date'):
+        try:
+            sp.remittance_date = validate_date_string(data['remittance_date'], required=True)
+        except ValueError as exc:
+            logger.warning('Invalid remittance_date in mark_super_payment_paid: %s', exc)
+            return _err('Invalid date format', 400)
+
     sp.status = 'paid'
     # Also stamp the per-event columns for the linked events so the YTD
     # summary and per-employee view see the cleared super.
