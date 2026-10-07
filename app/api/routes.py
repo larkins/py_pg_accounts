@@ -1186,7 +1186,12 @@ def mark_invoice_paid(invoice_id):
     """
     Mark an invoice as paid. Sets status='paid', records payment_date
     (defaults to today) and amount_paid (defaults to total_amount if not provided).
-    Also sets paid_at timestamp to now.
+
+    2026-10-07 patch: optionally accepts bank-side provenance:
+      - payment_reference: free-form NAB ref / OSKO ID etc (max 100 chars)
+      - payment_method:    'nab_osko' | 'transfer_credit' | 'direct_debit' | 'cheque' | …
+      - notes:             free-form context (e.g. "OSKO batch 07 Oct 14:28 AEST")
+      - paid_at:           ISO 8601 timestamp override; defaults to now (UTC)
     """
     if not validate_uuid(invoice_id):
         return jsonify({'error': 'Invalid invoice ID'}), 400
@@ -1219,8 +1224,39 @@ def mark_invoice_paid(invoice_id):
     else:
         invoice.amount_paid = invoice.total_amount
 
+    # ---- 2026-10-07: bank-side provenance + custom paid_at ----
+    if 'payment_reference' in data:
+        ref = (data.get('payment_reference') or '').strip()
+        if len(ref) > 100:
+            return jsonify({'error': 'payment_reference too long (max 100 chars)'}), 400
+        invoice.payment_reference = ref or None
+
+    if 'payment_method' in data:
+        method = (data.get('payment_method') or '').strip()
+        if len(method) > 50:
+            return jsonify({'error': 'payment_method too long (max 50 chars)'}), 400
+        invoice.payment_method = method or None
+
+    if 'notes' in data:
+        notes = data.get('notes')
+        invoice.notes = notes if notes else None
+
+    paid_at_str = data.get('paid_at')
+    if paid_at_str:
+        try:
+            from datetime import datetime as dt_class, timezone as tz_class
+            # Accept ISO 8601 with or without timezone; coerce to UTC for storage.
+            parsed = dt_class.fromisoformat(str(paid_at_str).replace('Z', '+00:00'))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=tz_class.utc)
+            invoice.paid_at = parsed.astimezone(tz_class.utc)
+        except (ValueError, TypeError) as e:
+            logger.warning('Invalid paid_at in mark_invoice_paid: %s', e)
+            return jsonify({'error': 'Invalid paid_at timestamp'}), 400
+    else:
+        invoice.paid_at = get_utc_now()
+
     invoice.status = 'paid'
-    invoice.paid_at = get_utc_now()
 
     log_activity(
         user_id=request.current_user.id,

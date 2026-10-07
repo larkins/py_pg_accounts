@@ -26,6 +26,11 @@ class Invoice(db.Model):
     sent_at = db.Column(db.DateTime(timezone=True), nullable=True)
     confirmed_received_at = db.Column(db.DateTime(timezone=True), nullable=True)
     paid_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    # 2026-10-07: capture bank-side provenance for payments (NAB ref, OSKO, etc).
+    # Same shape as super_payment.payment_reference — keeps reconciliation tidy.
+    payment_reference = db.Column(db.String(100), nullable=True)
+    payment_method    = db.Column(db.String(50),  nullable=True)  # e.g. 'nab_osko', 'transfer_credit'
+    notes             = db.Column(db.Text,         nullable=True)  # free-form payment context
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=get_utc_now)
     updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=get_utc_now, onupdate=get_utc_now)
 
@@ -71,6 +76,9 @@ class Invoice(db.Model):
             'sent_at': self.sent_at.isoformat() if self.sent_at else None,
             'confirmed_received_at': self.confirmed_received_at.isoformat() if self.confirmed_received_at else None,
             'paid_at': self.paid_at.isoformat() if self.paid_at else None,
+            'payment_reference': self.payment_reference,
+            'payment_method':    self.payment_method,
+            'notes':             self.notes,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
             'reminder_count': self.reminders.count() if hasattr(self, 'reminders') else 0,
