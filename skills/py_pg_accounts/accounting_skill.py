@@ -502,31 +502,51 @@ class AccountingSkill:
         self,
         invoice_id: str,
         payment_date: Optional[str] = None,
-        amount_paid: Optional[float] = None
+        amount_paid: Optional[float] = None,
+        payment_reference: Optional[str] = None,
+        payment_method: Optional[str] = None,
+        paid_at: Optional[str] = None,
+        notes: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Mark an invoice as paid via POST /api/invoices/<id>/mark-paid.
         Sets status='paid', payment_date, amount_paid (defaults to total_amount),
-        and paid_at (set to now UTC by the API).
+        and paid_at (custom ISO 8601, or now UTC if omitted).
 
-        The underlying API only honours payment_date and amount_paid; extra keys
-        (payment_reference, payment_method, notes) are silently ignored. For full
-        bank-side provenance (OSKO/NAB ref, transaction ID, method), prefer
-        skill.create_bank_transaction() — see bank-transactions.md.
+        2026-10-07 patch: the API now honours payment_reference, payment_method,
+        notes, and a custom paid_at. These are persisted on the invoice row so
+        the bank-side provenance (NAB ref, OSKO ID, batch context) carries
+        forward into BAS/Xero exports and reports.
 
         Args:
             invoice_id: UUID of the invoice
             payment_date: Date payment was received (YYYY-MM-DD). Defaults to today.
             amount_paid: Amount paid. Defaults to invoice total_amount (full payment).
+            payment_reference: Free-form bank-side ref (NAB ref, OSKO ID, etc).
+                               Max 100 chars. Stored in invoices.payment_reference.
+            payment_method:    'nab_osko' | 'transfer_credit' | 'direct_debit' | 'cheque' | …
+                               Max 50 chars. Stored in invoices.payment_method.
+            paid_at:           Custom ISO 8601 timestamp for when funds cleared
+                               (e.g. '2026-10-07T14:28:00+10:00'). Defaults to now (UTC).
+            notes:             Free-form payment context (e.g. 'OSKO batch 07 Oct 14:28 AEST').
+                               Stored in invoices.notes.
 
         Returns:
             Dictionary containing the updated invoice data
         """
-        data = {}
+        data: Dict[str, Any] = {}
         if payment_date:
             data['payment_date'] = payment_date
         if amount_paid is not None:
             data['amount_paid'] = str(amount_paid)
+        if payment_reference is not None:
+            data['payment_reference'] = payment_reference
+        if payment_method is not None:
+            data['payment_method'] = payment_method
+        if paid_at is not None:
+            data['paid_at'] = paid_at
+        if notes is not None:
+            data['notes'] = notes
 
         result = self._make_request('POST', f'/api/invoices/{invoice_id}/mark-paid', data)
         return result['invoice']
