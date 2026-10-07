@@ -505,8 +505,14 @@ class AccountingSkill:
         amount_paid: Optional[float] = None
     ) -> Dict[str, Any]:
         """
-        Mark an invoice as paid. Sets status='paid', records payment details,
-        and sets the paid_at timestamp to now.
+        Mark an invoice as paid via POST /api/invoices/<id>/mark-paid.
+        Sets status='paid', payment_date, amount_paid (defaults to total_amount),
+        and paid_at (set to now UTC by the API).
+
+        The underlying API only honours payment_date and amount_paid; extra keys
+        (payment_reference, payment_method, notes) are silently ignored. For full
+        bank-side provenance (OSKO/NAB ref, transaction ID, method), prefer
+        skill.create_bank_transaction() — see bank-transactions.md.
 
         Args:
             invoice_id: UUID of the invoice
